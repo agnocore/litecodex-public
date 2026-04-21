@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "entry:install": "node entry/cli.mjs entry install",
+    "entry:start": "node entry/cli.mjs entry start",
+    "entry:stop": "node entry/cli.mjs entry stop",
+    "entry:restart": "node entry/cli.mjs entry restart",
+    "entry:status": "node entry/cli.mjs entry status",
+    "entry:open": "node entry/cli.mjs entry open",
     "build:community": "node scripts/build-community.mjs",
     "build:private": "node scripts/build-private.mjs",
     "release:community:verify": "node scripts/release-community-verify.mjs"

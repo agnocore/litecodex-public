@@ -2,6 +2,25 @@
 
 Lite Codex Community Edition (CE) is a source-available release with a strict public/private boundary.
 
+## Quick Start (Windows)
+Use a normal shell (PowerShell/CMD/Windows Terminal), not Node.js REPL (`>` prompt).
+
+```powershell
+git clone https://github.com/agnocore/litecodex-public.git
+cd litecodex-public
+npm install
+npm run entry:install
+npm run entry:status
+```
+
+Health check:
+```powershell
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:43985/health | Select-Object -ExpandProperty Content
+```
+
+- Expected listen: `127.0.0.1:43985`
+- Full steps: [INSTALL.md](./INSTALL.md)
+
 ## Local Entry
 - Local entry URL: `http://127.0.0.1:43985`
 - Service name: `litecodex-entry`
@@ -9,10 +28,10 @@ Lite Codex Community Edition (CE) is a source-available release with a strict pu
 
 ## Install and Start
 - See [INSTALL.md](./INSTALL.md)
-- Quick commands:
-  - `node entry/cli.mjs entry install`
-  - `node entry/cli.mjs entry status`
-  - `node entry/cli.mjs entry open`
+- Recommended commands:
+  - `npm run entry:install`
+  - `npm run entry:status`
+  - `npm run entry:open`
 
 ## Edition Boundary
 - CE public scope and private control plane boundary:
@@ -27,4 +46,3 @@ Lite Codex Community Edition (CE) is a source-available release with a strict pu
 ## Security Controls
 - Entitlement verify path (CE-side verifier only): [docs/ENTITLEMENT_SPEC.md](./docs/ENTITLEMENT_SPEC.md)
 - Update signing verify path (CE-side verifier only): [docs/UPDATE_SIGNING_SPEC.md](./docs/UPDATE_SIGNING_SPEC.md)
-
