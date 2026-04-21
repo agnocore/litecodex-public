@@ -1,0 +1,20 @@
+{
+  "version": "v1",
+  "code": "COMMUNITY_EDITION_RESTRICTED",
+  "required_feature": "official_advanced",
+  "cache_ttl_ms": 2000,
+  "routes": [
+    {
+      "method": "POST",
+      "pattern": "^/runs/(phase[0-9][a-z0-9-]*|task-to-engineering-closeout|openai-codegen-transport-closeout|workspace-root-deploy-closeout)$",
+      "capability": "internal_or_official_workflow",
+      "reason": "internal_phase_and_closeout_routes_are_not_ce_public_surface"
+    },
+    {
+      "method": "ANY",
+      "pattern": "^/capability-grants(?:/.*)?$",
+      "capability": "capability_grant_admin",
+      "reason": "grant_lifecycle_admin_endpoints_require_official_entitlement"
+    }
+  ]
+}

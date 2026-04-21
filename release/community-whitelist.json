@@ -24,6 +24,7 @@
     "run-ledger/migrations",
     "scripts/build-community.mjs",
     "scripts/build-private.mjs",
+    "scripts/audit-community-boundary.mjs",
     "scripts/release-community-verify.mjs",
     "scripts/release-lib.mjs",
     "release/community-whitelist.json"

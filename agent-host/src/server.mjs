@@ -15,6 +15,7 @@ import {
 import { createAttachmentIngestor } from "./foundation/attachment-ingest.mjs";
 import { assembleAutoContext } from "./foundation/autocontext-assemble.mjs";
 import { runLedgerIntegrityScan } from "./foundation/ledger-integrity.mjs";
+import { verifyEntitlement } from "../../entry/service/entitlement-verifier.mjs";
 
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, "..", "..");
@@ -363,6 +364,9 @@ const skillsCatalogContract = JSON.parse(fs.readFileSync(path.join(sharedDir, "s
 const attachmentManifestContract = JSON.parse(fs.readFileSync(path.join(sharedDir, "attachment-manifest.v1.json"), "utf8"));
 const autocontextAssemblyContract = JSON.parse(fs.readFileSync(path.join(sharedDir, "autocontext-assembly.v1.json"), "utf8"));
 const frontendEventContract = JSON.parse(fs.readFileSync(path.join(sharedDir, "frontend-event-contract.v1.json"), "utf8"));
+const communityBoundaryGuardContract = JSON.parse(
+  fs.readFileSync(path.join(sharedDir, "community-boundary-guard.v1.json"), "utf8")
+);
 const pathBoundaryErrorContract = JSON.parse(
   fs.readFileSync(path.join(sharedDir, "path-boundary-error-contract.v1.json"), "utf8")
 );
@@ -549,6 +553,10 @@ const BYO_VALIDATION_STATUSES = new Set([
 ]);
 const BYO_CHALLENGE_ACTIONS = new Set(["bind", "validate", "revalidate", "unbind", "delete"]);
 const BYO_CHALLENGE_TTL_MS = 120000;
+const hostEntitlementFile = process.env.LITECODEX_ENTITLEMENT_FILE || path.join(repoRoot, "entry", "state", "entitlement.v1.json");
+const hostEntitlementKeysFile =
+  process.env.LITECODEX_ENTITLEMENT_PUBLIC_KEYS_FILE ||
+  path.join(repoRoot, "shared", "entitlement-public-keys.v1.json");
 const MACHINE_SCOPE_ID_HASH = crypto
   .createHash("sha256")
   .update(`${os.hostname()}|${os.platform()}|${os.arch()}`)
@@ -581,6 +589,120 @@ for (const [frozenType, aliasList] of Object.entries(frontendEventContract?.alia
       frontendAliasToFrozen.set(cleanAlias, cleanFrozen);
     }
   }
+}
+
+const COMMUNITY_BOUNDARY_REQUIRED_FEATURE =
+  String(communityBoundaryGuardContract?.required_feature || "official_advanced").trim() || "official_advanced";
+const COMMUNITY_BOUNDARY_ERROR_CODE =
+  String(communityBoundaryGuardContract?.code || "COMMUNITY_EDITION_RESTRICTED").trim() ||
+  "COMMUNITY_EDITION_RESTRICTED";
+const HOST_ENTITLEMENT_CACHE_TTL_MS = Number(communityBoundaryGuardContract?.cache_ttl_ms || 2000);
+
+function compileCommunityBoundaryMatchers(contract) {
+  const routes = Array.isArray(contract?.routes) ? contract.routes : [];
+  const matchers = [];
+  for (const route of routes) {
+    const method = String(route?.method || "ANY").trim().toUpperCase() || "ANY";
+    const pattern = String(route?.pattern || "").trim();
+    if (!pattern) {
+      continue;
+    }
+    try {
+      matchers.push({
+        method,
+        regex: new RegExp(pattern),
+        capability: String(route?.capability || "official_control_plane").trim() || "official_control_plane",
+        reason: String(route?.reason || "").trim() || null
+      });
+    } catch {
+      // ignore invalid regex in contract
+    }
+  }
+  return matchers;
+}
+
+const communityBoundaryMatchers = compileCommunityBoundaryMatchers(communityBoundaryGuardContract);
+let hostEntitlementCache = null;
+let hostEntitlementCacheAt = 0;
+
+function resolveCommunityBoundaryMatch(method, pathname) {
+  const m = String(method || "GET").toUpperCase();
+  const p = String(pathname || "");
+  for (const matcher of communityBoundaryMatchers) {
+    if (matcher.method !== "ANY" && matcher.method !== m) {
+      continue;
+    }
+    if (matcher.regex.test(p)) {
+      return matcher;
+    }
+  }
+  return null;
+}
+
+function readHostEntitlementSecurity(forceRefresh = false) {
+  const now = Date.now();
+  if (
+    !forceRefresh &&
+    hostEntitlementCache &&
+    Number.isFinite(hostEntitlementCacheAt) &&
+    now - hostEntitlementCacheAt < HOST_ENTITLEMENT_CACHE_TTL_MS
+  ) {
+    return hostEntitlementCache;
+  }
+
+  try {
+    const entitlement = verifyEntitlement({
+      repoRoot,
+      entitlementFile: hostEntitlementFile,
+      keysFile: hostEntitlementKeysFile
+    });
+    const officialAdvancedEnabled =
+      entitlement?.status === "valid" &&
+      entitlement?.features &&
+      entitlement.features[COMMUNITY_BOUNDARY_REQUIRED_FEATURE] === true;
+    hostEntitlementCache = {
+      officialAdvancedEnabled,
+      entitlementStatus: String(entitlement?.status || "missing"),
+      entitlementReason: String(entitlement?.reason || "entitlement_missing"),
+      entitlementSource: String(entitlement?.source || hostEntitlementFile),
+      keyId: entitlement?.keyId || null
+    };
+  } catch (error) {
+    hostEntitlementCache = {
+      officialAdvancedEnabled: false,
+      entitlementStatus: "invalid",
+      entitlementReason: String(error?.message || error),
+      entitlementSource: hostEntitlementFile,
+      keyId: null
+    };
+  }
+  hostEntitlementCacheAt = now;
+  return hostEntitlementCache;
+}
+
+function enforceCommunityBoundary({ req, res, pathname }) {
+  const matcher = resolveCommunityBoundaryMatch(req?.method, pathname);
+  if (!matcher) {
+    return true;
+  }
+  const security = readHostEntitlementSecurity();
+  if (security.officialAdvancedEnabled) {
+    return true;
+  }
+  sendJson(res, 403, {
+    ok: false,
+    error: "community_edition_restricted",
+    code: COMMUNITY_BOUNDARY_ERROR_CODE,
+    required_feature: COMMUNITY_BOUNDARY_REQUIRED_FEATURE,
+    capability: matcher.capability,
+    reason: matcher.reason,
+    method: String(req?.method || "GET").toUpperCase(),
+    path: String(pathname || ""),
+    entitlement_status: security.entitlementStatus,
+    entitlement_reason: security.entitlementReason,
+    message: "Endpoint requires official entitlement and remains private-control-plane scoped."
+  });
+  return false;
 }
 
 let byoApiKeyMemory = null;
@@ -39330,6 +39452,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
+    if (!enforceCommunityBoundary({ req, res, pathname })) {
+      return;
+    }
+
     if (req.method === "GET" && pathname === "/health") {
       sendJson(res, 200, {
         ok: true,
@@ -39341,7 +39467,12 @@ const server = http.createServer(async (req, res) => {
         recipes_loaded: recipesById.size,
         verifiers_loaded: verifierSpecsById.size,
         active_run_id: currentRun()?.id || null,
-        active_auth_session_id: currentAuthSession()?.id || null
+        active_auth_session_id: currentAuthSession()?.id || null,
+        community_boundary: {
+          contract: String(communityBoundaryGuardContract?.version || "v1"),
+          restricted_routes: communityBoundaryMatchers.length,
+          official_advanced_enabled: readHostEntitlementSecurity().officialAdvancedEnabled
+        }
       });
       return;
     }

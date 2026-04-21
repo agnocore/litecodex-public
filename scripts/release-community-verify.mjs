@@ -131,6 +131,10 @@ async function main() {
   steps.push({ step: "build_private", result: buildPrivate });
   assert(buildPrivate.code === 0, "build_private_failed");
 
+  const boundaryAudit = runNode([path.join("scripts", "audit-community-boundary.mjs")]);
+  steps.push({ step: "audit_community_boundary", result: boundaryAudit });
+  assert(boundaryAudit.code === 0, "audit_community_boundary_failed");
+
   const communityFiles = listFilesRecursive(communityOutDir).map((filePath) =>
     path.relative(communityOutDir, filePath).replace(/\\/g, "/")
   );
@@ -247,4 +251,3 @@ main().catch((error) => {
   process.stderr.write(`${JSON.stringify(failure, null, 2)}\n`);
   process.exit(1);
 });
-
