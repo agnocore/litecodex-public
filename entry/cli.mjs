@@ -156,8 +156,8 @@ function isOurEntryProcess(pid) {
   if (!cmdline) return false;
   const normalized = cmdline.replaceAll("/", "\\").toLowerCase();
   return (
-    normalized.includes("\\litecodex\\entry\\service\\entry-runner.mjs") ||
-    normalized.includes("\\litecodex\\entry\\service\\entry-server.mjs")
+    normalized.includes("\\entry\\service\\entry-runner.mjs") ||
+    normalized.includes("\\entry\\service\\entry-server.mjs")
   );
 }
 
