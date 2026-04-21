@@ -1,0 +1,37 @@
+{
+  "id": "lite_8gb",
+  "description": "Single-run, low-memory profile for 8GB-class machines",
+  "limits": {
+    "single_active_run": true,
+    "auth_session_timeout_ms": 120000,
+    "ui_event_buffer_max": 16,
+    "run_list_max": 8,
+    "step_timeline_max": 16
+  },
+  "artifacts": {
+    "heavy_outputs_disabled": true,
+    "trace": false,
+    "video": false,
+    "browser_artifacts": false,
+    "file_diff_rendering": "summary_only",
+    "review_drawer_mode": "placeholder_only"
+  },
+  "banners": {
+    "auth_pending": "placeholder",
+    "reconnect": "placeholder",
+    "compact": "placeholder"
+  },
+  "dependencies": {
+    "auto_detect_docker": false,
+    "auto_launch_playwright": false,
+    "auto_launch_wsl": false
+  },
+  "security": {
+    "byo_key_storage": "memory_only"
+  },
+  "deferred_lanes": [
+    "docker_lane",
+    "playwright_lane",
+    "compact_resume_reconnect_full"
+  ]
+}

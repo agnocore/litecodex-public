@@ -1,0 +1,22 @@
+{
+  "version": "v1.provider-health-governance.closeout",
+  "health_ttl_ms": 300000,
+  "failure_window": {
+    "size": 3,
+    "degrade_threshold": 2
+  },
+  "temporary_disable_policy": {
+    "enabled": true,
+    "cooldown_ms": 120000
+  },
+  "fallback_policy": {
+    "enabled": true,
+    "single_hop_only": true,
+    "fallback_order": ["tavily", "exa", "firecrawl_fetch"]
+  },
+  "reenable_policy": {
+    "after_cooldown": true,
+    "requires_success_probe": false
+  },
+  "final_status": "frozen"
+}

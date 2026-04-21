@@ -1,0 +1,11 @@
+{
+  "version": "v1.phase6b",
+  "api_key_ready": false,
+  "sdk_or_cli_ready": false,
+  "sandbox_create_ready": false,
+  "sandbox_execute_ready": false,
+  "sandbox_teardown_ready": false,
+  "phase6a_ready": false,
+  "blocked_modules": [],
+  "evidence_root": "evidence/phase6a-e2b-second-lane"
+}

@@ -1,0 +1,32 @@
+{
+  "version": "v1.store-release-boundary",
+  "lanes": [
+    {
+      "lane_id": "store.play_console_release",
+      "required_runner": "android_runner",
+      "required_host_os": "windows_or_linux",
+      "required_credentials": [
+        "google_play_console_credentials"
+      ],
+      "required_services": [
+        "play_console"
+      ],
+      "blocking_scope": "external_runner_required",
+      "non_blocking_default": true
+    },
+    {
+      "lane_id": "store.app_store_release",
+      "required_runner": "macos_runner",
+      "required_host_os": "macos",
+      "required_credentials": [
+        "app_store_connect_credentials"
+      ],
+      "required_services": [
+        "app_store_connect"
+      ],
+      "blocking_scope": "external_runner_required",
+      "non_blocking_default": true
+    }
+  ],
+  "final_status": "enabled"
+}

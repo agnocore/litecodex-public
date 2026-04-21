@@ -1,0 +1,10 @@
+{
+  "version": "v1.phase4a",
+  "run_id": "string",
+  "last_event_seq": "integer",
+  "loaded_events_count": "integer",
+  "loaded_ledger_tables": "string[]",
+  "artifacts_loaded": "string[]",
+  "missing_artifacts": "string[]",
+  "final_projection_status": "running|completed|failed|failed_controlled"
+}

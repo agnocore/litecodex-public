@@ -1,0 +1,15 @@
+{
+  "version": "v1.phase4c",
+  "parent_run_id": "string",
+  "child_run_id": "string",
+  "lineage_type": "fork",
+  "baseline_run_id": "string|null",
+  "source_compact_id": "string|null",
+  "source_event_range": {
+    "from_seq": "integer|null",
+    "to_seq": "integer|null"
+  },
+  "created_at": "ISO-8601",
+  "integrity_status": "verified|failed_controlled|pending"
+}
+

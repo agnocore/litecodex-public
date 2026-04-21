@@ -1,0 +1,22 @@
+{
+  "version": "v1.stack-pack-readiness",
+  "readiness_rules": {
+    "requires_toolchain_fulfillment": true,
+    "requires_representative_task_result": true,
+    "representative_status_required": "completed",
+    "blocked_if_missing_required_tool": true
+  },
+  "packs": [
+    "frontend.react_vite_ts",
+    "frontend.nextjs",
+    "frontend.vue_vite",
+    "backend.node_express",
+    "backend.python_fastapi",
+    "backend.go_gin",
+    "backend.java_springboot",
+    "worker.cloudflare",
+    "fullstack.vite_fastapi",
+    "crossend.react_native"
+  ],
+  "final_status": "enabled"
+}

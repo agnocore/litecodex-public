@@ -1,0 +1,71 @@
+{
+  "version": "v1",
+  "description": "Adapter runtime contract for local execution chain",
+  "adapters": [
+    {
+      "adapter_id": "file.adapter.v1",
+      "adapter_type": "file",
+      "required_capabilities": ["local.file.read", "local.file.write"],
+      "input_schema": "shared/file-adapter.v1.json",
+      "output_schema": {
+        "result": "ok|failed",
+        "target_path": "string",
+        "bytes": "number",
+        "summary": "string"
+      },
+      "risk_level": "low",
+      "evidence_policy": {
+        "sqlite_summary_only": true,
+        "artifacts_allowed": true
+      }
+    },
+    {
+      "adapter_id": "shell.adapter.v1",
+      "adapter_type": "shell",
+      "required_capabilities": ["local.shell.run"],
+      "input_schema": "shared/shell-adapter.v1.json",
+      "output_schema": {
+        "exit_code": "number",
+        "stdout_summary": "string",
+        "stderr_summary": "string"
+      },
+      "risk_level": "medium",
+      "evidence_policy": {
+        "sqlite_summary_only": true,
+        "artifacts_allowed": true
+      }
+    },
+    {
+      "adapter_id": "git.adapter.v1",
+      "adapter_type": "git",
+      "required_capabilities": ["local.git.status", "local.git.diff", "local.git.worktree"],
+      "input_schema": "shared/git-adapter.v1.json",
+      "output_schema": {
+        "status_summary": "string",
+        "diff_summary": "string",
+        "branch_or_worktree": "string"
+      },
+      "risk_level": "medium",
+      "evidence_policy": {
+        "sqlite_summary_only": true,
+        "artifacts_allowed": true
+      }
+    },
+    {
+      "adapter_id": "verify.loop.v1",
+      "adapter_type": "verify_loop",
+      "required_capabilities": ["local.verify.run", "local.file.write"],
+      "input_schema": "shared/verify-loop.v1.json",
+      "output_schema": {
+        "attempt": "number",
+        "status": "failed|passed",
+        "failure_summary": "string|null"
+      },
+      "risk_level": "low",
+      "evidence_policy": {
+        "sqlite_summary_only": true,
+        "artifacts_allowed": true
+      }
+    }
+  ]
+}

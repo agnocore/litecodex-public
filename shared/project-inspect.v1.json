@@ -1,0 +1,11 @@
+{
+  "version": "v1.phase3f",
+  "workspace_root": "string",
+  "detected_languages": "string[]",
+  "detected_package_managers": "string[]",
+  "detected_test_commands": "string[]",
+  "detected_config_files": "string[]",
+  "risk_summary": "string",
+  "trust_status": "trusted|untrusted|restricted",
+  "inspect_artifact_path": "string"
+}

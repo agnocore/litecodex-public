@@ -1,0 +1,22 @@
+{
+  "version": "v1.foundation-final-closeout",
+  "routes": {
+    "list": "GET /entry/workspaces",
+    "create": "POST /entry/workspaces",
+    "select": "POST /entry/workspaces/select",
+    "current": "GET /entry/workspaces/current"
+  },
+  "workspace_schema": {
+    "id": "string",
+    "name": "string",
+    "workspace_path": "string",
+    "status": "active|archived",
+    "created_at": "ISO-8601",
+    "updated_at": "ISO-8601"
+  },
+  "selection_schema": {
+    "workspace_id": "string|null",
+    "workspace_path": "string|null",
+    "selected_at": "ISO-8601|null"
+  }
+}

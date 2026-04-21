@@ -1,0 +1,26 @@
+{
+  "version": "v1.stack-pack-completion-matrix",
+  "packs": [
+    "frontend.react_vite_ts",
+    "frontend.nextjs",
+    "frontend.vue_vite",
+    "backend.node_express",
+    "backend.python_fastapi",
+    "backend.go_gin",
+    "backend.java_springboot",
+    "worker.cloudflare",
+    "fullstack.vite_fastapi",
+    "crossend.react_native"
+  ],
+  "required_fields": [
+    "pack_id",
+    "readiness",
+    "representative_task_passed",
+    "verify_matrix_complete",
+    "review_repair_wired",
+    "deploy_preflight_present",
+    "unique_blocker"
+  ],
+  "readiness_rule": "pack_by_pack_real_execution_or_explicit_blocker",
+  "final_status": "enabled"
+}

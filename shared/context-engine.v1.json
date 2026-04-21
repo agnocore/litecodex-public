@@ -1,0 +1,102 @@
+{
+  "version": "v1.phase4c",
+  "run_id": "string",
+  "baseline_run_id": "string|null",
+  "state_projection": {
+    "run_status": "running|completed|failed|failed_controlled",
+    "last_event_seq": "integer",
+    "last_event_type": "string|null",
+    "terminal": "boolean",
+    "resumable": "boolean"
+  },
+  "ledger_sources": [
+    "runs",
+    "events",
+    "auth_sessions",
+    "capability_grants",
+    "adapter_runs",
+    "file_changes",
+    "verify_runs",
+    "repair_decisions",
+    "replay_artifacts",
+    "patch_proposals",
+    "patch_applications",
+    "rollback_snapshots",
+    "command_adjustments",
+    "dependency_install_proposals",
+    "dependency_install_runs",
+    "install_rollback_snapshots",
+    "install_rollback_runs",
+    "replay_runs",
+    "project_inspections",
+    "workspace_trust_checks",
+    "tool_discoveries",
+    "adapter_install_requirements",
+    "tool_install_proposals",
+    "tool_install_runs",
+    "tool_install_rollback_runs",
+    "phase3_smoke_results",
+    "consistency_checks",
+    "phase_readiness",
+    "context_hydrations",
+    "reconnect_sessions",
+    "resume_sessions",
+    "phase4_baseline_bindings",
+    "ledger_projections",
+    "compact_runs",
+    "compact_artifacts",
+    "compact_mappings",
+    "attachment_manifests",
+    "run_attachments",
+    "autocontext_snapshots",
+    "stale_running_recoveries",
+    "run_lineage",
+    "fork_runs",
+    "fork_workspaces",
+    "fork_artifact_mappings"
+  ],
+  "hydration_status": "pending|completed|failed|failed_controlled",
+  "resume_policy": {
+    "terminal_completed_resumable": false,
+    "terminal_failed_controlled_resumable": false,
+    "running_resumable_requires_marker": true
+  },
+  "reconnect_policy": {
+    "cursor_source": "seq",
+    "missed_event_replay": true,
+    "max_replay_events": 500
+  },
+  "compact_support": {
+    "enabled": true,
+    "compact_trigger_policy": "manual_or_auto",
+    "hydrate_modes": [
+      "raw",
+      "compact+delta",
+      "fallback_raw"
+    ],
+    "raw_event_retention": "required"
+  },
+  "stale_running_recovery": {
+    "enabled": true,
+    "startup_scan": true,
+    "action_policy": "resume_or_controlled_fail",
+    "terminal_statuses": [
+      "completed",
+      "failed",
+      "failed_controlled",
+      "stale_controlled"
+    ]
+  },
+  "fork_support": {
+    "enabled": true,
+    "lineage_required": true,
+    "baseline_bound_required": true,
+    "fork_hydrate_modes": [
+      "raw",
+      "compact+delta",
+      "fallback_raw"
+    ],
+    "source_integrity_policy": "source_run_read_only_no_mutation",
+    "workspace_isolation_policy": "fork_workspace_must_be_isolated"
+  }
+}

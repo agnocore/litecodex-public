@@ -1,0 +1,58 @@
+{
+  "version": "v1.phase5d",
+  "request_types": [
+    {
+      "request_type": "browser_external_verification",
+      "target_type": "external_readonly",
+      "provider": "cloudflare|vercel|supabase",
+      "risk_level": "low",
+      "policy_action": "allow",
+      "reason": "allowlist_matched_readonly",
+      "requires_user_approval": false,
+      "final_status": "allowed_auto"
+    },
+    {
+      "request_type": "browser_external_verification",
+      "target_type": "external_readonly",
+      "provider": "cloudflare|vercel|supabase",
+      "risk_level": "medium",
+      "policy_action": "escalate",
+      "reason": "allowlist_missing_or_partial_match",
+      "requires_user_approval": true,
+      "final_status": "escalated_waiting_manual_approval"
+    },
+    {
+      "request_type": "browser_external_verification",
+      "target_type": "external_or_destructive",
+      "provider": "any",
+      "risk_level": "high",
+      "policy_action": "reject",
+      "reason": "forbidden_target_or_destructive_path_selector",
+      "requires_user_approval": false,
+      "final_status": "rejected_policy"
+    }
+  ],
+  "pending_persistence": {
+    "enabled": true,
+    "store_in_sqlite": true,
+    "store_in_run_events": true,
+    "restore_after_restart": true,
+    "emit_pending_restored": true
+  },
+  "transitions": {
+    "allow_to": [
+      "allow"
+    ],
+    "reject_to": [
+      "reject"
+    ],
+    "escalate_to": [
+      "pending",
+      "approved",
+      "rejected",
+      "expired",
+      "cancelled"
+    ]
+  },
+  "approval_receipt_policy": "required_for_approved_rejected_expired_cancelled"
+}

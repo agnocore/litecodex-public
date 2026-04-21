@@ -1,0 +1,18 @@
+{
+  "version": "v1.swift-host-boundary",
+  "pack_id": "backend.swift_windows",
+  "scope": "windows_host_subset_only",
+  "required_checks": [
+    "swift --version (optional on unsupported host)",
+    "host-safe semantic representative verify"
+  ],
+  "forbidden_claims": [
+    "apple_full_production_chain",
+    "ios_release_pipeline_ready"
+  ],
+  "boundary_outcomes": [
+    "completed_host_subset",
+    "deferred_host_blocked"
+  ],
+  "final_status": "enabled"
+}

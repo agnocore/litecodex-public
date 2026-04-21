@@ -1,0 +1,14 @@
+{
+  "version": "v1.polyglot-final-aggregation",
+  "required_fields": [
+    "completed_packs",
+    "blocked_packs",
+    "deferred_packs",
+    "unique_blocker",
+    "production_engineering_final_ready"
+  ],
+  "unique_blocker_rule": "set only when blocked_packs count is exactly one",
+  "deferred_rule": "host_blocked_pack_must_be_listed_in_deferred_not_blocked",
+  "flutter_rule": "crossend.flutter_desktop_host_blocked is deferred when host unsupported",
+  "final_status": "enabled"
+}

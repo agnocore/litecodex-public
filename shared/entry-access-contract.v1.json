@@ -1,0 +1,14 @@
+{
+  "version": "v1.foundation-final-closeout",
+  "routes": {
+    "status": "GET /access/status",
+    "grant": "POST /access/grant",
+    "recheck": "POST /access/recheck"
+  },
+  "response_schema": {
+    "full_access_granted": "boolean",
+    "status": "granted|revoked",
+    "source": "string|null",
+    "updated_at": "ISO-8601|null"
+  }
+}

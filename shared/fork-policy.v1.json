@@ -1,0 +1,11 @@
+{
+  "version": "v1.phase4d",
+  "source_workspace": "string",
+  "target_workspace": "string",
+  "ancestry_relation": "same_path|source_ancestor_of_target|target_ancestor_of_source|disjoint",
+  "self_copy_detected": "boolean",
+  "policy_action": "allow|reject|auto_redirect",
+  "redirected_target": "string|null",
+  "reason": "string",
+  "created_at": "ISO-8601"
+}

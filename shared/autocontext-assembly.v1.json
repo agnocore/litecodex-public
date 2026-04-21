@@ -1,0 +1,38 @@
+{
+  "version": "v1.foundation-closeout",
+  "entrypoint": "assembleAutoContext(run_id, step_id)",
+  "trigger_event": "step.requested",
+  "snapshot_schema": {
+    "snapshot_id": "autctx_*",
+    "run_id": "string",
+    "step_id": "string",
+    "created_at": "ISO-8601",
+    "run_ref": {
+      "status": "string",
+      "last_event_type": "string|null",
+      "updated_at": "ISO-8601|null"
+    },
+    "compact_ref": {
+      "compact_run_id": "string|null",
+      "artifact_path": "string|null",
+      "integrity_hash": "string|null",
+      "status": "completed|fallback_raw|missing"
+    },
+    "attachment_refs": "array<string>",
+    "session_refs": {
+      "auth_session_id": "string|null",
+      "resume_session_id": "string|null",
+      "reconnect_session_id": "string|null"
+    },
+    "evidence_refs": {
+      "manifest_path": "string|null",
+      "run_artifact_paths": "array<string>"
+    },
+    "source_tables": "array<string>",
+    "snapshot_hash": "sha256_hex"
+  },
+  "storage": {
+    "snapshot_path_template": "runs/<run-id>/artifacts/autocontext_snapshot_<ts>_<step-id>.json",
+    "ledger_table": "autocontext_snapshots"
+  }
+}

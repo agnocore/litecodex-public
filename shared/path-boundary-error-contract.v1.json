@@ -1,0 +1,31 @@
+{
+  "version": "v1.foundation-final-closeout",
+  "error": "path_boundary_rejected",
+  "default_status": 403,
+  "reasons": {
+    "ancestor_escape": {
+      "status": 403,
+      "error_code": "path_boundary_ancestor_escape"
+    },
+    "forbidden_subpath": {
+      "status": 403,
+      "error_code": "path_boundary_forbidden_subpath"
+    },
+    "outside_working_root": {
+      "status": 403,
+      "error_code": "path_boundary_outside_workspace"
+    },
+    "symlink_escape": {
+      "status": 403,
+      "error_code": "path_boundary_symlink_escape"
+    }
+  },
+  "response_schema": {
+    "error": "path_boundary_rejected",
+    "error_code": "string",
+    "reason": "ancestor_escape|forbidden_subpath|outside_working_root|symlink_escape",
+    "check_type": "string",
+    "path": "string",
+    "workspace_root": "string|null"
+  }
+}

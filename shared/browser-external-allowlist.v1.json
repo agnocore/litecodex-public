@@ -1,0 +1,113 @@
+{
+  "version": "v1.phase5c",
+  "providers": [
+    {
+      "provider": "cloudflare",
+      "allowed_domains": [
+        "dash.cloudflare.com",
+        "developers.cloudflare.com"
+      ],
+      "allowed_paths": [
+        "/",
+        "/profile",
+        "/docs",
+        "/fundamentals"
+      ],
+      "allowed_page_types": [
+        "dashboard_readonly",
+        "docs_readonly"
+      ],
+      "allowed_selectors": [
+        "body",
+        "main",
+        "h1"
+      ],
+      "forbidden_paths": [
+        "/workers-and-pages/deploy",
+        "/secrets",
+        "/billing",
+        "/dns",
+        "/settings"
+      ],
+      "forbidden_selectors": [
+        "button:has-text('Deploy')",
+        "button:has-text('Delete')",
+        "button:has-text('Save')",
+        "button:has-text('Create')"
+      ],
+      "approval_class": "readonly_external_low_risk",
+      "readonly_only": true
+    },
+    {
+      "provider": "vercel",
+      "allowed_domains": [
+        "vercel.com"
+      ],
+      "allowed_paths": [
+        "/dashboard",
+        "/docs",
+        "/"
+      ],
+      "allowed_page_types": [
+        "dashboard_readonly",
+        "docs_readonly"
+      ],
+      "allowed_selectors": [
+        "body",
+        "main",
+        "h1"
+      ],
+      "forbidden_paths": [
+        "/new",
+        "/deployments/new",
+        "/settings",
+        "/billing",
+        "/integrations"
+      ],
+      "forbidden_selectors": [
+        "button:has-text('Deploy')",
+        "button:has-text('Delete')",
+        "button:has-text('Save')",
+        "button:has-text('Create')"
+      ],
+      "approval_class": "readonly_external_low_risk",
+      "readonly_only": true
+    },
+    {
+      "provider": "supabase",
+      "allowed_domains": [
+        "supabase.com"
+      ],
+      "allowed_paths": [
+        "/dashboard",
+        "/docs",
+        "/"
+      ],
+      "allowed_page_types": [
+        "dashboard_readonly",
+        "docs_readonly"
+      ],
+      "allowed_selectors": [
+        "body",
+        "main",
+        "h1"
+      ],
+      "forbidden_paths": [
+        "/dashboard/project/*/database",
+        "/dashboard/project/*/settings",
+        "/dashboard/project/*/api-keys",
+        "/dashboard/project/*/functions",
+        "/dashboard/project/*/secrets",
+        "/dashboard/new"
+      ],
+      "forbidden_selectors": [
+        "button:has-text('Deploy')",
+        "button:has-text('Delete')",
+        "button:has-text('Save')",
+        "button:has-text('Create')"
+      ],
+      "approval_class": "readonly_external_low_risk",
+      "readonly_only": true
+    }
+  ]
+}

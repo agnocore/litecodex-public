@@ -1,0 +1,46 @@
+{
+  "version": "v1.citation-quality-gate.closeout",
+  "canonicalization_rules": {
+    "normalize_scheme_host": true,
+    "strip_fragment": true,
+    "trim_trailing_slash": true,
+    "drop_tracking_query_params": ["utm_*", "gclid", "fbclid", "mc_cid", "mc_eid", "ref", "source", "token", "code", "sig"]
+  },
+  "duplicate_collapse_rules": {
+    "key": "canonical_url",
+    "keep": "highest_score_then_latest",
+    "mark_others_rejected": true,
+    "reject_reason": "duplicate_collapsed"
+  },
+  "domain_trust_tiers": {
+    "high": ["nodejs.org", "openai.com", "developers.cloudflare.com", "vercel.com", "supabase.com"],
+    "medium": ["github.com", "docs.github.com", "wikipedia.org"],
+    "low": ["*.blogspot.com", "*.substack.com"],
+    "blocked": ["localhost", "127.0.0.1"]
+  },
+  "stale_source_policy": {
+    "freshness_required_min_stale_score": 0.45,
+    "stale_score_days_bands": [
+      { "max_days": 30, "score": 1.0 },
+      { "max_days": 180, "score": 0.8 },
+      { "max_days": 365, "score": 0.6 },
+      { "max_days": 99999, "score": 0.4 }
+    ],
+    "unknown_published_at_score": 0.55
+  },
+  "citation_eligible_rules": {
+    "require_non_empty_url": true,
+    "require_title_or_snippet": true,
+    "reject_blocked_tier": true,
+    "freshness_gate_applies_when_reason_code_in": ["freshness_required"]
+  },
+  "reject_reasons": [
+    "missing_url",
+    "missing_content",
+    "duplicate_collapsed",
+    "blocked_domain_tier",
+    "stale_source",
+    "policy_rejected"
+  ],
+  "final_status": "frozen"
+}

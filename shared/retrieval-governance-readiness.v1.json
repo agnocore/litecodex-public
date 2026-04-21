@@ -1,0 +1,12 @@
+{
+  "version": "v1.retrieval-governance-readiness.closeout",
+  "citation_quality_gate_ready": "boolean",
+  "conflict_resolution_ready": "boolean",
+  "canonicalization_ready": "boolean",
+  "budget_governance_ready": "boolean",
+  "provider_health_governance_ready": "boolean",
+  "retrieval_governance_closeout_ready": "boolean",
+  "blocked_modules": ["string"],
+  "evidence_root": "evidence/retrieval-governance-closeout",
+  "final_status": "frozen"
+}

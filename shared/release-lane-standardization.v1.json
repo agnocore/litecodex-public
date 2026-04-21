@@ -1,0 +1,43 @@
+{
+  "version": "v1.release-lane-standardization",
+  "preflight_steps": [
+    "workspace_root_path_jail_check",
+    "toolchain_detect_or_fulfill",
+    "readonly_release_target_guard",
+    "command_normalization"
+  ],
+  "verify_steps": [
+    "review_gate",
+    "verify_pipeline",
+    "repair_loop_with_attempt_ceiling",
+    "online_verification_or_host_safe_receipt"
+  ],
+  "receipt_schema": {
+    "required_fields": [
+      "lane_id",
+      "preflight_status",
+      "verify_status",
+      "receipt_status",
+      "boundary_freeze_status",
+      "evidence_path"
+    ]
+  },
+  "boundary_freeze_rules": [
+    "host_safe_subchain_never_claims_full_release",
+    "external_runner_required_never_marked_same_host_passed",
+    "deferred_non_blocking_explicitly_recorded"
+  ],
+  "online_verification_policy": {
+    "mode": "non_destructive",
+    "allowed": [
+      "readonly_http_probe",
+      "readonly_browser_probe"
+    ],
+    "forbidden": [
+      "destructive_deploy",
+      "store_publish",
+      "credential_write"
+    ]
+  },
+  "final_status": "enabled"
+}

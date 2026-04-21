@@ -1,0 +1,74 @@
+{
+  "version": "v1.retrieval-broker.multi-provider-closeout",
+  "search_needed_decision": {
+    "default_mode": "no_search",
+    "reason_codes": [
+      "user_requested_web_search",
+      "freshness_required",
+      "url_provided",
+      "low_confidence_external_fact",
+      "local_repo_sufficient",
+      "deterministic_local_task"
+    ],
+    "trigger_rules": {
+      "user_requested_web_search": "search_required",
+      "freshness_required": "search_required",
+      "url_provided": "search_required",
+      "low_confidence_external_fact": "search_required",
+      "local_repo_sufficient": "no_search",
+      "deterministic_local_task": "no_search"
+    }
+  },
+  "provider_routing": {
+    "enabled_providers": ["tavily", "exa", "firecrawl_fetch"],
+    "disabled_providers": ["firecrawl_search", "firecrawl_crawl"],
+    "default_provider": "tavily",
+    "max_search_rounds": 2,
+    "max_urls_per_task": 3
+  },
+  "query_plan_policy": {
+    "tavily_first_hop": {
+      "search_depth": "basic",
+      "max_results": 5,
+      "auto_parameters": false,
+      "include_raw_content": false
+    },
+    "exa_second_hop": {
+      "default_mode": "highlights",
+      "full_text_non_default": true
+    },
+    "firecrawl_lane": {
+      "scrape_on_known_url": true,
+      "extract_on_structured_target": true,
+      "crawl_default_disabled": true
+    }
+  },
+  "provider_fallback_policy": {
+    "single_provider_start": true,
+    "max_fallback_hops": 1,
+    "fallback_order": ["tavily", "exa", "firecrawl_fetch"],
+    "hard_stop_when_all_unhealthy": true
+  },
+  "evidence_bundle_contract": {
+    "schema_ref": "evidence-bundle.v1.json",
+    "required_fields": ["decision", "query_plan", "sources", "facts", "conflicts", "gaps", "summary", "raw_context_refs"],
+    "forbidden_fields": ["api_key", "token", "cookie", "session_secret"]
+  },
+  "credential_model": {
+    "local_only": true,
+    "host_memory_only_secret": true,
+    "browser_profile_scope_default": true,
+    "cross_browser_share": false,
+    "remote_persistence": false,
+    "metadata_only_ledger": true
+  },
+  "replay_and_ledger_policy": {
+    "ledger_store": "metadata_only",
+    "replay_mode": "deterministic",
+    "store_full_response_body": false,
+    "store_result_summaries": true,
+    "artifact_root": "runs/<run-id>/retrieval/"
+  },
+  "enabled_providers": ["tavily", "exa", "firecrawl_fetch"],
+  "disabled_providers": ["firecrawl_search", "firecrawl_crawl"]
+}

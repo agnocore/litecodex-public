@@ -1,0 +1,18 @@
+{
+  "version": "v1.stack-profile",
+  "profile_id": "string",
+  "app_kind": "frontend | backend | fullstack | library | worker | mobile",
+  "runtime": "node | python | go | java | rust | dotnet | flutter | react-native",
+  "framework": "string",
+  "package_manager": "npm | pnpm | yarn | pip | poetry | cargo | go",
+  "test_stack": ["string"],
+  "deploy_target": "string",
+  "data_layer": "string",
+  "auth_model": "string",
+  "repo_topology": "monorepo | single_repo",
+  "risk_level": "low | medium | high",
+  "auto_fill_confidence": 0.0,
+  "blocking_ambiguities": ["string"],
+  "default_stack_profile_used": false,
+  "final_status": "selected | blocked"
+}

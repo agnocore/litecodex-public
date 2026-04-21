@@ -1,0 +1,19 @@
+{
+  "version": "v1.byo-key-validation.exact",
+  "provider": "openai",
+  "validation_probe": "openai_models_list_exact",
+  "probe_mode": "exact",
+  "gateway_policy": {
+    "allow_heuristic_400_assumed_valid": false,
+    "ambiguous_status": "gateway_ambiguous"
+  },
+  "validation_status": "valid | invalid_key | permission_denied | rate_limited | network_unreachable | gateway_ambiguous | unknown_auth_error",
+  "failure_reason": "string | null",
+  "last_verified_at": "ISO-8601 | null",
+  "retry_policy": {
+    "max_retries": 1,
+    "retryable_statuses": ["network_unreachable", "rate_limited", "gateway_ambiguous"],
+    "non_retryable_statuses": ["invalid_key", "permission_denied"]
+  },
+  "final_status": "passed | failed_controlled"
+}

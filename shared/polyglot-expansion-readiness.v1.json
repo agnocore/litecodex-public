@@ -1,0 +1,18 @@
+{
+  "version": "v1.polyglot-expansion-readiness",
+  "required_ready_count": 7,
+  "readiness_fields": [
+    "polyglot_expansion_production_ready",
+    "production_engineering_final_ready",
+    "rust_ready",
+    "terraform_ready",
+    "yaml_ready",
+    "sql_ready",
+    "kotlin_ready",
+    "swift_windows_ready",
+    "flutter_web_ready",
+    "flutter_desktop_deferred",
+    "unique_blocker"
+  ],
+  "final_status": "enabled"
+}

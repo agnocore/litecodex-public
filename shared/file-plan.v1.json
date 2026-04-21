@@ -1,0 +1,13 @@
+{
+  "version": "v1.file-plan",
+  "plan_id": "string",
+  "task_id": "string",
+  "target_files": ["string"],
+  "operations": ["create | update | patch | delete_blocked"],
+  "path_jail_checked": true,
+  "diff_policy": {
+    "max_touched_files": 12,
+    "max_total_diff_bytes": 262144
+  },
+  "final_status": "planned | blocked"
+}

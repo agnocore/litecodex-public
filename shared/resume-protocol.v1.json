@@ -1,0 +1,14 @@
+{
+  "version": "v1.phase4a",
+  "run_id": "string",
+  "status_before_resume": "running|completed|failed|failed_controlled",
+  "resumable": "boolean",
+  "resume_reason": "string",
+  "resume_cursor": "integer|null",
+  "resumed_step_id": "string|null",
+  "terminal_status_policy": {
+    "completed": "hydrate_only",
+    "failed": "reject_resume",
+    "failed_controlled": "reject_resume"
+  }
+}

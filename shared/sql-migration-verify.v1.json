@@ -1,0 +1,14 @@
+{
+  "version": "v1.sql-migration-verify",
+  "verify_steps": [
+    "parse_sql",
+    "apply_to_sqlite_memory",
+    "schema_assertions",
+    "query_smoke"
+  ],
+  "forbidden_actions": [
+    "production_apply",
+    "destructive_drop_without_guard"
+  ],
+  "final_status": "enabled"
+}

@@ -1,0 +1,12 @@
+{
+  "version": "v1.dependency-policy",
+  "project_local_only": true,
+  "forbid_global_install": true,
+  "allowed_managers": ["npm", "pnpm", "yarn", "pip", "uv", "go", "maven", "gradle"],
+  "forbidden_flags": ["-g", "--global", "--system"],
+  "max_install_seconds": 600,
+  "max_new_dependencies_per_task": 6,
+  "allow_lockfile_update": true,
+  "final_status": "enabled"
+}
+

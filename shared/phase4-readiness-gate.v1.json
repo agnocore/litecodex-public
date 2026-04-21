@@ -1,0 +1,20 @@
+{
+  "version": "v1.phase3g",
+  "phase3_ready": "boolean",
+  "verified_modules": "string[]",
+  "blocked_modules": "string[]",
+  "allowed_phase4_inputs": [
+    "phase3_run_ledger",
+    "phase3_replay_artifacts",
+    "phase3_consistency_checks",
+    "phase3_smoke_results"
+  ],
+  "fixture_only_boundaries": [
+    "tool_install",
+    "dependency_install",
+    "repair_patch_apply",
+    "replay_runner_command"
+  ],
+  "risks": "string[]",
+  "evidence_root": "string"
+}

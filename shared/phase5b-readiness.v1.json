@@ -1,0 +1,25 @@
+{
+  "version": "v1.phase5b-closeout",
+  "playwright_cli_ready": false,
+  "browser_action_matrix_ready": false,
+  "post_auth_verification_gate_ready": false,
+  "previous_blocker": "",
+  "blocker_resolved": false,
+  "phase5b_ready": false,
+  "new_blocked_modules": [],
+  "allowed_inputs": [
+    "file:// fixture targets",
+    "localhost readonly/browser smoke targets",
+    "readonly auth verification requests"
+  ],
+  "forbidden_actions": [
+    "external remote write automation",
+    "dashboard destructive click automation",
+    "wrangler deploy",
+    "vercel deploy",
+    "supabase write actions",
+    "upload_file",
+    "download_file"
+  ],
+  "evidence_root": "evidence/phase5b-closeout-playwright-cli"
+}

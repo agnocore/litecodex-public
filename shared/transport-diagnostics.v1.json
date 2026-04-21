@@ -1,0 +1,46 @@
+{
+  "version": "phase-postv1-openai-transport-diagnostics.v1",
+  "timeout_ms": 15000,
+  "powershell_probe": {
+    "tool": "powershell",
+    "route": "POST https://api.openai.com/v1/responses",
+    "expected_result": "http_success_or_classified_failure"
+  },
+  "node_sdk_probe": {
+    "tool": "official_openai_node_sdk",
+    "route": "client.responses.create()",
+    "expected_result": "http_success_or_classified_failure"
+  },
+  "provider_resolver_probe": {
+    "tool": "litecodex_provider_resolver",
+    "route": "POST https://api.openai.com/v1/responses",
+    "expected_result": "route_binding_consistent"
+  },
+  "task_codegen_probe": {
+    "tool": "task_to_engineering_codegen",
+    "route": "POST https://api.openai.com/v1/responses",
+    "expected_result": "json_codegen_success"
+  },
+  "failure_layer": {
+    "allowed_values": [
+      "dns_failure",
+      "tls_failure",
+      "proxy_failure",
+      "firewall_or_network_failure",
+      "wrong_base_url",
+      "wrong_endpoint",
+      "wrong_model",
+      "header_auth_error",
+      "sdk_wiring_error",
+      "node_only_transport_failure",
+      "powershell_only_transport_failure",
+      "provider_resolver_wiring_error",
+      "task_codegen_wiring_error",
+      "gateway_ambiguous",
+      "network_unreachable",
+      "unknown_transport_failure"
+    ]
+  },
+  "failure_reason": "normalized_text",
+  "final_status": "active"
+}

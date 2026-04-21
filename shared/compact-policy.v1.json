@@ -1,0 +1,11 @@
+{
+  "version": "v1.phase4b",
+  "manual_trigger": true,
+  "auto_trigger": true,
+  "event_count_threshold": 12,
+  "artifact_size_threshold": 65536,
+  "compact_scope": "run_event_window_plus_projection",
+  "raw_event_retention_policy": "retain_all_events_ndjson",
+  "compact_summary_policy": "deterministic_non_llm",
+  "compact_delta_policy": "hydrate_uses_compact_plus_delta"
+}

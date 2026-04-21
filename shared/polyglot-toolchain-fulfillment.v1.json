@@ -1,0 +1,37 @@
+{
+  "version": "v1.polyglot-toolchain-fulfillment",
+  "resource_mode": "lite_8gb",
+  "bringup_policy": {
+    "install_mode": "on_demand_minimal",
+    "global_mutation": "minimal_only",
+    "must_record_install_attempt": true,
+    "must_reprobe_after_install": true,
+    "must_run_representative_verify": true
+  },
+  "pack_toolchain_requirements": [
+    {
+      "pack_id": "backend.java_springboot",
+      "required_tools": ["java", "javac", "maven"],
+      "verify_commands": ["java -version", "javac -version", "mvn -v", "mvn -q test"],
+      "install_order": ["jdk", "maven"]
+    },
+    {
+      "pack_id": "backend.go_gin",
+      "required_tools": ["go"],
+      "verify_commands": ["go version", "go test ./..."],
+      "install_order": ["go_toolchain"]
+    },
+    {
+      "pack_id": "crossend.react_native",
+      "required_tools": ["node", "react-native-cli"],
+      "verify_commands": [
+        "node -v",
+        "npx react-native --version",
+        "node tests/mobile.test.mjs",
+        "node scripts/smoke.mjs"
+      ],
+      "install_order": ["react_native_cli_project_local"]
+    }
+  ],
+  "final_status": "enabled"
+}

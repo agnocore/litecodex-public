@@ -1,0 +1,57 @@
+{
+  "version": "v1.evidence-bundle.retrieval-governance-closeout",
+  "decision": {
+    "search_needed": "boolean",
+    "reason_code": "string"
+  },
+  "query_plan": {
+    "provider_chain": ["string"],
+    "query": "string",
+    "search_depth": "string | null",
+    "max_results": "number | null",
+    "auto_parameters": "boolean | null",
+    "fetch_targets": ["string"]
+  },
+  "sources": [
+    {
+      "$ref": "source-hit.v1.json"
+    }
+  ],
+  "facts": [
+    {
+      "fact_id": "string",
+      "fact": "string",
+      "confidence": "number",
+      "provenance_refs": ["string"],
+      "citation_labels": ["string"]
+    }
+  ],
+  "conflicts": [
+    {
+      "conflict_id": "string",
+      "topic": "string",
+      "status": "resolved_conflict | unresolved_conflict",
+      "winner": "string | null",
+      "candidate_values": ["string"],
+      "provenance_refs": ["string"]
+    }
+  ],
+  "gaps": [
+    {
+      "reason": "string",
+      "detail": "string"
+    }
+  ],
+  "summary": "string",
+  "raw_context_refs": ["string"],
+  "provider_status": [
+    {
+      "provider": "string",
+      "status": "healthy | unhealthy | unavailable | degraded",
+      "latency_ms": "number | null",
+      "credits_estimate": "number | null",
+      "failure_reason": "string | null"
+    }
+  ],
+  "final_bundle_status": "ready | insufficient_evidence | unresolved_conflict"
+}

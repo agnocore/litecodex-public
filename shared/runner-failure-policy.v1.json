@@ -1,0 +1,28 @@
+{
+  "version": "v1.runner-failure-policy",
+  "failure_types": [
+    "runner_unreachable",
+    "missing_prerequisite",
+    "command_failed",
+    "timeout",
+    "artifact_sync_failed",
+    "unknown_runner_error"
+  ],
+  "failure_stages": [
+    "registry",
+    "capability_detection",
+    "job_execute",
+    "artifact_sync",
+    "readiness_aggregation"
+  ],
+  "retry_policy": {
+    "max_retries": 1,
+    "retryable_failure_types": [
+      "timeout",
+      "runner_unreachable",
+      "artifact_sync_failed"
+    ]
+  },
+  "classification_required": true,
+  "final_status": "enabled"
+}

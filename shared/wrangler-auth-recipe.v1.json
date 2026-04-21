@@ -1,0 +1,39 @@
+{
+  "version": "v1",
+  "id": "wrangler_oauth_login",
+  "platform": "cloudflare_wrangler",
+  "mode": "browser_oauth",
+  "challenge_renderer": "command_rendered",
+  "challenge": {
+    "preferred_command": "wrangler login --scopes account:read user:read",
+    "fallback_command": "wrangler login",
+    "pending_hint": "Complete Cloudflare browser OAuth/2FA and keep run open for auto-detection.",
+    "sensitive_policy": {
+      "persist_oauth_token": false,
+      "persist_api_token": false,
+      "persist_cookie": false,
+      "persist_session_secret": false,
+      "persist_2fa_code": false
+    }
+  },
+  "verifier": {
+    "id": "wrangler_oauth_verifier",
+    "primary_probe": "wrangler whoami --json",
+    "secondary_probes": [
+      "wrangler --version",
+      "wrangler whoami"
+    ],
+    "verified_capability_mapping": [
+      "wrangler.oauth.authenticated",
+      "cloudflare.account.authenticated",
+      "cloudflare.user.read",
+      "cloudflare.account.read",
+      "cloudflare.account.membership.read"
+    ]
+  },
+  "scope": {
+    "scope_type": "workspace",
+    "scope_value_source": "repo_root"
+  },
+  "grant_ttl_seconds": 3600
+}

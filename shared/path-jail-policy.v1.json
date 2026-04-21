@@ -1,0 +1,14 @@
+{
+  "version": "v1.path-jail-policy",
+  "allowed_path_rules": ["within_working_root", "within_task_storage_roots"],
+  "forbidden_path_rules": ["outside_working_root", "forbidden_subpaths", "ancestor_escape"],
+  "ancestor_collision_policy": "reject",
+  "external_path_policy": "reject",
+  "reject_reasons": [
+    "outside_working_root",
+    "forbidden_subpath",
+    "ancestor_escape",
+    "path_conflict"
+  ],
+  "final_status": "approved | rejected"
+}

@@ -1,0 +1,26 @@
+{
+  "version": "v1.polyglot-toolchain-remediation",
+  "pipeline": [
+    "detect",
+    "fulfill",
+    "re_detect",
+    "verify"
+  ],
+  "rust_remediation": {
+    "require_rustup": true,
+    "required_components": [
+      "rustc",
+      "cargo"
+    ],
+    "default_toolchain_policy": "stable-x86_64-pc-windows-msvc_required",
+    "host_triple_required": true,
+    "absolute_path_receipt_required": true
+  },
+  "fulfillment_policy": {
+    "single_run_closure_required": true,
+    "max_install_attempts": 1,
+    "max_redetect_attempts": 2,
+    "controlled_failure_on_unrecoverable": true
+  },
+  "final_status": "enabled"
+}

@@ -1,0 +1,64 @@
+{
+  "version": "v1.phase3b",
+  "classes": [
+    {
+      "id": "syntax_error",
+      "match_hints": [
+        "SyntaxError",
+        "Unexpected token",
+        "Unexpected end of input"
+      ]
+    },
+    {
+      "id": "test_assertion_failure",
+      "match_hints": [
+        "VERIFY_FAIL",
+        "AssertionError",
+        "Expected"
+      ]
+    },
+    {
+      "id": "command_not_found",
+      "match_hints": [
+        "is not recognized as an internal or external command",
+        "not found",
+        "ENOENT"
+      ]
+    },
+    {
+      "id": "command_misconfigured",
+      "match_hints": [
+        "Cannot find module",
+        "script path",
+        "cwd mismatch"
+      ]
+    },
+    {
+      "id": "dependency_missing",
+      "match_hints": [
+        "Cannot find module",
+        "Module not found",
+        "missing dependency"
+      ]
+    },
+    {
+      "id": "permission_denied",
+      "match_hints": [
+        "EACCES",
+        "permission denied"
+      ]
+    },
+    {
+      "id": "timeout",
+      "match_hints": [
+        "ETIMEDOUT",
+        "timed out",
+        "spawnSync"
+      ]
+    },
+    {
+      "id": "unknown_failure",
+      "match_hints": []
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "version": "v1.retrieval-budget-policy.closeout",
+  "max_search_rounds": 2,
+  "max_urls_per_task": 3,
+  "provider_budget_ceiling": {
+    "tavily": 1,
+    "exa": 1,
+    "firecrawl_fetch": 1
+  },
+  "latency_budget_ms": 12000,
+  "retry_ceiling": 1,
+  "cooldown_policy": {
+    "consecutive_failures_for_cooldown": 2,
+    "cooldown_ms": 120000
+  },
+  "degraded_mode_policy": {
+    "enter_when_provider_unhealthy": true,
+    "enter_when_budget_exceeded": true,
+    "fallback_order": ["tavily", "exa", "firecrawl_fetch"],
+    "allow_single_fallback_hop": true
+  },
+  "final_status": "frozen"
+}

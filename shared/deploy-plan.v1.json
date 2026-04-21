@@ -1,0 +1,14 @@
+{
+  "version": "v1.deploy-plan",
+  "plan_id": "string",
+  "provider": "vercel_preview",
+  "mode": "preview_non_destructive",
+  "preflight_required": true,
+  "deploy_command_policy": "normalized_and_guarded",
+  "retry_policy": {
+    "max_retries": 1,
+    "allowed_correction_classes": ["quoting_fix", "cwd_fix", "missing_local_build_artifact"]
+  },
+  "verification_policy": ["node_http", "powershell_http", "browser_readonly"],
+  "final_status": "planned | completed | failed_controlled"
+}

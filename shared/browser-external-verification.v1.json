@@ -1,0 +1,48 @@
+{
+  "version": "v1.phase5d",
+  "providers": [
+    {
+      "provider": "cloudflare",
+      "target_url": "https://developers.cloudflare.com/",
+      "verification_type": "readonly_selector_text",
+      "expected_selector": "body",
+      "expected_text": "Cloudflare",
+      "screenshot_required": true,
+      "receipt_policy": "sqlite_summary_plus_artifact"
+    },
+    {
+      "provider": "vercel",
+      "target_url": "https://vercel.com/docs",
+      "verification_type": "readonly_selector_text",
+      "expected_selector": "body",
+      "expected_text": "Vercel",
+      "screenshot_required": true,
+      "receipt_policy": "sqlite_summary_plus_artifact"
+    },
+    {
+      "provider": "supabase",
+      "target_url": "https://supabase.com/docs",
+      "verification_type": "readonly_selector_text",
+      "expected_selector": "body",
+      "expected_text": "Supabase",
+      "screenshot_required": true,
+      "receipt_policy": "sqlite_summary_plus_artifact"
+    }
+  ],
+  "readonly_assertions": [
+    "open_page_only",
+    "wait_selector",
+    "extract_text",
+    "screenshot"
+  ],
+  "forbidden_assertions": [
+    "click_destructive",
+    "submit_form",
+    "mutate_settings",
+    "deploy"
+  ],
+  "pending_approval_supported": true,
+  "same_run_continue_required": true,
+  "rejection_termination_policy": "same_run_failed_controlled",
+  "restart_restore_policy": "pending_requests_restored_from_ledger"
+}

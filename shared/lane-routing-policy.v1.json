@@ -1,0 +1,30 @@
+{
+  "version": "v1.phase6b",
+  "local_only_tasks": [
+    "local_only_echo",
+    "local_fixture_read",
+    "local_only_verify_task"
+  ],
+  "e2b_candidate_tasks": [
+    "candidate_isolated_task"
+  ],
+  "e2b_required_tasks": [
+    "isolated_shell_probe",
+    "isolated_shell_verify_task",
+    "isolated_patch_verify_task",
+    "fallback_isolated_verify_task",
+    "strict_nonfallback_isolated_task"
+  ],
+  "forbidden_tasks": [
+    "real_deploy",
+    "external_destructive_write"
+  ],
+  "approval_required_tasks": [
+    "external_browser_write"
+  ],
+  "resource_constraints": {
+    "single_active_run": true,
+    "max_parallel_sandboxes": 1,
+    "local_and_e2b_high_load_parallel": false
+  }
+}

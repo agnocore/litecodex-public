@@ -1,0 +1,15 @@
+{
+  "version": "v1.phase4b",
+  "compact_id": "string",
+  "run_id": "string",
+  "source_event_range": {
+    "from_seq": "integer",
+    "to_seq": "integer"
+  },
+  "projection_before_path": "string",
+  "projection_after_path": "string",
+  "delta_after_compact": {
+    "delta_from_seq": "integer"
+  },
+  "hydrate_policy": "compact_plus_delta_then_raw_fallback"
+}

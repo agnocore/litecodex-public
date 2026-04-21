@@ -1,0 +1,13 @@
+{
+  "version": "v1.phase4b",
+  "compact_id": "string",
+  "run_id": "string",
+  "baseline_run_id": "string|null",
+  "source_event_from_seq": "integer",
+  "source_event_to_seq": "integer",
+  "included_tables": "string[]",
+  "summary_json": "object",
+  "artifact_path": "string",
+  "created_at": "ISO-8601",
+  "integrity_hash": "sha256"
+}

@@ -1,0 +1,14 @@
+{
+  "version": "skills-catalog.v1",
+  "root": ".agents/skills",
+  "skills": [
+    "auth-broker-dispatch",
+    "auth-browser-oauth",
+    "auth-cli-login",
+    "auth-token-session",
+    "capability-probe",
+    "workspace-bootstrap",
+    "verify-and-repair",
+    "deploy-with-proof"
+  ]
+}

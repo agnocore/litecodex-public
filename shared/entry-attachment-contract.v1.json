@@ -1,0 +1,17 @@
+{
+  "version": "v1.foundation-final-closeout",
+  "routes": {
+    "upload": "POST /entry/sessions/:id/attachments/upload",
+    "paste": "POST /entry/sessions/:id/attachments/paste",
+    "screenshot": "POST /entry/sessions/:id/attachments/screenshot",
+    "list": "GET /entry/sessions/:id/attachments"
+  },
+  "response_schema": {
+    "attachment": "run_attachments row",
+    "manifest": "attachment_manifests row"
+  },
+  "storage_policy": {
+    "scope": "session_to_run_binding",
+    "root": ".litecodex/tasks/<run-id>/attachments or runs/<run-id>/artifacts/attachments"
+  }
+}

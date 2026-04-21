@@ -1,0 +1,18 @@
+{
+  "version": "v1.phase3f",
+  "workspace_root": "string",
+  "trust_status": "trusted|untrusted|restricted",
+  "allowed_roots": [
+    "{workspace_root}"
+  ],
+  "forbidden_paths": [
+    ".env",
+    ".env.local",
+    ".git",
+    "../"
+  ],
+  "write_policy": "workspace_scoped_only",
+  "install_policy": "workspace_scoped_only",
+  "command_policy": "no_deploy_no_destructive",
+  "risk_level": "low|medium|high"
+}

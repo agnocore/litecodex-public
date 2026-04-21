@@ -1,0 +1,155 @@
+{
+  "version": "v1",
+  "table": "capability_grants",
+  "key": "capability_key",
+  "scopes": [
+    "global",
+    "workspace",
+    "project",
+    "host"
+  ],
+  "grant_modes": [
+    "browser_oauth",
+    "cli_login",
+    "token_input",
+    "device_code",
+    "vercel_cli_login",
+    "wrangler_oauth_login",
+    "supabase_token_input",
+    "local_runtime"
+  ],
+  "statuses": [
+    "granted",
+    "expired",
+    "revoked"
+  ],
+  "lifecycle": {
+    "grant_created": "status=granted",
+    "grant_expired": "status=expired when now >= expires_at",
+    "grant_revoked": "status=revoked when manual revoke is confirmed"
+  },
+  "sensitive_policy": {
+    "persist_secrets": false,
+    "persist_tokens": false,
+    "memory_only_fields": [
+      "token",
+      "pat",
+      "device_code_secret"
+    ]
+  },
+  "fields": {
+    "id": "string",
+    "run_id": "string|null",
+    "step_id": "string|null",
+    "capability_key": "string",
+    "scope_type": "string",
+    "scope_value": "string",
+    "grant_mode": "string",
+    "grant_recipe_id": "string|null",
+    "verifier_id": "string|null",
+    "status": "granted|expired|revoked",
+    "granted_at": "ISO-8601",
+    "verified_at": "ISO-8601",
+    "expires_at": "ISO-8601|null",
+    "revoked_at": "ISO-8601|null",
+    "revoke_reason": "string|null",
+    "updated_at": "ISO-8601"
+  },
+  "capabilities": [
+    {
+      "key": "wrangler.oauth.authenticated",
+      "description": "Wrangler authenticated via OAuth-capable login state (`wrangler whoami --json`).",
+      "risk": "low"
+    },
+    {
+      "key": "cloudflare.account.authenticated",
+      "description": "Cloudflare account authentication is active in Wrangler.",
+      "risk": "low"
+    },
+    {
+      "key": "cloudflare.user.read",
+      "description": "Can read Cloudflare user identity details via Wrangler whoami.",
+      "risk": "low"
+    },
+    {
+      "key": "cloudflare.account.read",
+      "description": "Can read Cloudflare account list/details via Wrangler whoami.",
+      "risk": "low"
+    },
+    {
+      "key": "cloudflare.account.membership.read",
+      "description": "Can inspect Cloudflare account membership presence from Wrangler whoami output.",
+      "risk": "low"
+    },
+    {
+      "key": "vercel.account.authenticated",
+      "description": "Vercel CLI login state validated by `vercel whoami`.",
+      "risk": "low"
+    },
+    {
+      "key": "vercel.scope.inspect",
+      "description": "Can inspect account/team scope metadata via Vercel CLI list/read commands.",
+      "risk": "low"
+    },
+    {
+      "key": "vercel.project.read",
+      "description": "Can list/read Vercel projects via Vercel CLI.",
+      "risk": "low"
+    },
+    {
+      "key": "vercel.project.link.inspect",
+      "description": "Can inspect existing local .vercel/project.json binding without mutating link target.",
+      "risk": "low"
+    },
+    {
+      "key": "supabase.account.authenticated",
+      "description": "Supabase account authentication validated for read-only CLI access.",
+      "risk": "low"
+    },
+    {
+      "key": "supabase.project.read",
+      "description": "Can read Supabase project list with token-injected CLI command.",
+      "risk": "low"
+    },
+    {
+      "key": "supabase.org.read",
+      "description": "Can read Supabase organization metadata from project list response.",
+      "risk": "low"
+    },
+    {
+      "key": "local.file.read",
+      "description": "Read files within approved local workspace scope.",
+      "risk": "low"
+    },
+    {
+      "key": "local.file.write",
+      "description": "Write or patch files within approved local workspace scope.",
+      "risk": "low"
+    },
+    {
+      "key": "local.shell.run",
+      "description": "Run allowed shell commands within approved workspace cwd.",
+      "risk": "low"
+    },
+    {
+      "key": "local.git.status",
+      "description": "Read git status in local fixture repository.",
+      "risk": "low"
+    },
+    {
+      "key": "local.git.diff",
+      "description": "Read git diff patch summary in local fixture repository.",
+      "risk": "low"
+    },
+    {
+      "key": "local.git.worktree",
+      "description": "Create or switch isolated fixture branch/worktree for local execution.",
+      "risk": "low"
+    },
+    {
+      "key": "local.verify.run",
+      "description": "Run local verify command and capture result for verify loop.",
+      "risk": "low"
+    }
+  ]
+}

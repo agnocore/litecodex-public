@@ -1,0 +1,31 @@
+{
+  "version": "v1.phase6c",
+  "baseline_hash_required": true,
+  "current_hash_required": true,
+  "diff_binding_required": true,
+  "allowed_path_policy": {
+    "allowed_root": "workspaces/phase6c-fixture",
+    "forbidden_paths": [
+      ".git",
+      "node_modules",
+      "../"
+    ]
+  },
+  "conflict_detection_policy": {
+    "require_exact_hash_match": true,
+    "reject_on_mismatch": true
+  },
+  "apply_policy": {
+    "allow_apply_when_all_checks_passed": true,
+    "verify_after_apply": "node verify-writeback.mjs"
+  },
+  "reject_reasons": [
+    "baseline_hash_missing",
+    "current_hash_missing",
+    "diff_binding_mismatch",
+    "path_forbidden",
+    "hash_conflict",
+    "candidate_empty"
+  ],
+  "final_status": "approved | rejected | failed_controlled"
+}

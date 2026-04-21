@@ -1,0 +1,33 @@
+{
+  "version": "v1.runner-job-protocol",
+  "job_states": [
+    "queued",
+    "started",
+    "streaming",
+    "completed",
+    "failed_controlled"
+  ],
+  "required_fields": [
+    "run_id",
+    "runner_id",
+    "job_type",
+    "command_summary",
+    "started_at",
+    "completed_at",
+    "status",
+    "exit_code",
+    "stdout_summary",
+    "stderr_summary",
+    "artifact_path"
+  ],
+  "timeouts": {
+    "runner_capability_detect_timeout_ms": 20000,
+    "runner_job_timeout_ms": 180000
+  },
+  "log_streaming": {
+    "mode": "summary_only",
+    "max_stdout_chars": 2000,
+    "max_stderr_chars": 2000
+  },
+  "final_status": "enabled"
+}

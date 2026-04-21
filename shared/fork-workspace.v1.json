@@ -1,0 +1,17 @@
+{
+  "version": "v1.phase4c",
+  "source_workspace": "string",
+  "fork_workspace": "string",
+  "copy_mode": "recursive_copy_excluding_heavy_dirs",
+  "allowed_roots": [
+    "workspaces/*"
+  ],
+  "forbidden_paths": [
+    "node_modules",
+    ".git"
+  ],
+  "file_hashes_before": "object",
+  "file_hashes_after": "object",
+  "isolation_status": "verified|failed_controlled"
+}
+

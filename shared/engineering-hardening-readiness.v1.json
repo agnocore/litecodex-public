@@ -1,0 +1,22 @@
+{
+  "version": "v1.engineering-hardening-readiness",
+  "layers": [
+    "task_to_engineering_compiler",
+    "engineering_dimension_completion",
+    "polyglot_skill_packs",
+    "default_verify_pipeline",
+    "review_gate",
+    "repair_loop"
+  ],
+  "required_additional_hardening": [
+    "stack_pack_completion_matrix",
+    "ast_structured_repair_minimum_two_languages",
+    "deploy_online_verification_standardization",
+    "crossend_pack_hardening"
+  ],
+  "final_flags": [
+    "production_engineering_hardening_ready",
+    "unique_blocker"
+  ],
+  "final_status": "enabled"
+}

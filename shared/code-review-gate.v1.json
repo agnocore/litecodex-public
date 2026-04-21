@@ -1,0 +1,14 @@
+{
+  "version": "v1.code-review-gate",
+  "checks": [
+    "syntax_compile_correctness",
+    "dependency_policy",
+    "path_jail_workspace_root",
+    "hardcoded_secret_risk",
+    "dangerous_command_risk",
+    "deploy_command_normalization",
+    "stack_convention_consistency",
+    "diff_size_touched_files_policy"
+  ],
+  "final_status": "enabled"
+}

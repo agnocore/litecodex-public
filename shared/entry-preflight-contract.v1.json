@@ -1,0 +1,32 @@
+{
+  "version": "v1.foundation-final-closeout",
+  "route": "GET /entry/preflight",
+  "scope_note": "last_session_available and last_session are scoped to selected_workspace",
+  "response_schema": {
+    "host_connected": "boolean",
+    "full_access_granted": "boolean",
+    "openai_byo_bound": "boolean",
+    "workspace_available": "boolean",
+    "selected_workspace": {
+      "id": "string|null",
+      "name": "string|null",
+      "workspace_path": "string|null"
+    },
+    "last_session_available": "boolean",
+    "last_session": {
+      "id": "string|null",
+      "workspace_path": "string|null",
+      "run_id": "string|null",
+      "status": "string|null",
+      "updated_at": "ISO-8601|null"
+    },
+    "contracts": {
+      "preflight": "string",
+      "workspace": "string",
+      "session": "string",
+      "attachment": "string",
+      "access": "string",
+      "byo_openai": "string"
+    }
+  }
+}

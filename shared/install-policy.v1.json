@@ -1,0 +1,26 @@
+{
+  "version": "v1.phase3d",
+  "allowed_root": "{workspace_root}",
+  "allowed_package_managers": [
+    "npm",
+    "pnpm",
+    "yarn"
+  ],
+  "forbidden_global_flags": [
+    "-g",
+    "--global"
+  ],
+  "max_install_seconds": 45,
+  "max_package_count": 2,
+  "forbidden_packages": [
+    "playwright",
+    "puppeteer",
+    "docker",
+    "wrangler",
+    "vercel"
+  ],
+  "network_policy": "allow_local_or_registry_only",
+  "lockfile_policy": "allow_workspace_lockfile_changes_only",
+  "rollback_policy": "manual_restore_if_needed"
+}
+

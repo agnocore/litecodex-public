@@ -1,0 +1,112 @@
+{
+  "version": "v1.external-runner-prerequisites",
+  "runners": [
+    {
+      "runner_id": "windows_host",
+      "required_for": [
+        "frontend.react_vite_ts",
+        "frontend.nextjs",
+        "frontend.vue_vite",
+        "backend.node_express",
+        "backend.python_fastapi",
+        "backend.go_gin",
+        "backend.java_springboot",
+        "backend.rust_cargo",
+        "backend.kotlin_jvm",
+        "backend.swift_windows",
+        "worker.cloudflare",
+        "fullstack.vite_fastapi",
+        "data.sql_migration",
+        "config.yaml_schema",
+        "infra.terraform_cli",
+        "crossend.flutter_web"
+      ],
+      "host_os": "windows",
+      "required_toolchains": [
+        "node",
+        "python",
+        "go",
+        "java",
+        "maven",
+        "rustup",
+        "cargo",
+        "terraform",
+        "kotlinc",
+        "swift",
+        "flutter",
+        "dart"
+      ],
+      "required_credentials": [],
+      "required_devices": [],
+      "required_services": [],
+      "blocking_scope": "same_host_real"
+    },
+    {
+      "runner_id": "wsl_or_linux_runner",
+      "required_for": [
+        "linux_target_validation_optional"
+      ],
+      "host_os": "linux",
+      "required_toolchains": [
+        "node",
+        "python"
+      ],
+      "required_credentials": [],
+      "required_devices": [],
+      "required_services": [],
+      "blocking_scope": "deferred_non_blocking"
+    },
+    {
+      "runner_id": "android_runner",
+      "required_for": [
+        "mobile.android_release",
+        "store.play_console_release",
+        "crossend.react_native"
+      ],
+      "host_os": "windows_or_linux",
+      "required_toolchains": [
+        "android_sdk",
+        "gradle",
+        "react_native_cli_or_flutter"
+      ],
+      "required_credentials": [
+        "google_play_console_credentials"
+      ],
+      "required_devices": [
+        "android_emulator_or_device"
+      ],
+      "required_services": [
+        "play_console"
+      ],
+      "blocking_scope": "external_runner_required"
+    },
+    {
+      "runner_id": "macos_runner",
+      "required_for": [
+        "apple.ios_release",
+        "apple.macos_release",
+        "store.app_store_release",
+        "crossend.flutter_desktop"
+      ],
+      "host_os": "macos",
+      "required_toolchains": [
+        "xcode",
+        "swift",
+        "cocoapods",
+        "flutter"
+      ],
+      "required_credentials": [
+        "apple_developer_credentials",
+        "app_store_connect_credentials"
+      ],
+      "required_devices": [
+        "ios_simulator_or_device"
+      ],
+      "required_services": [
+        "app_store_connect"
+      ],
+      "blocking_scope": "external_runner_required"
+    }
+  ],
+  "final_status": "enabled"
+}

@@ -1,0 +1,11 @@
+{
+  "version": "v1.engineering-intent",
+  "intent_id": "string",
+  "run_id": "string",
+  "task_id": "string",
+  "original_user_ask": "string",
+  "target_outcome": "string",
+  "constraints": ["string"],
+  "risk_level": "low | medium | high",
+  "final_status": "compiled | blocked"
+}

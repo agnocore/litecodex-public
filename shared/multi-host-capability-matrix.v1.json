@@ -1,0 +1,247 @@
+{
+  "version": "v1.multi-host-capability-matrix",
+  "host_class": "windows_host",
+  "reason_code_allowlist": [
+    "supported_same_host",
+    "host_boundary_windows_only",
+    "requires_android_sdk_or_emulator",
+    "requires_macos_xcode",
+    "requires_store_credentials_and_release_host",
+    "host_safe_preflight_only",
+    "deferred_non_blocking",
+    "blocked_missing_prerequisite"
+  ],
+  "capabilities": [
+    {
+      "capability_id": "cap.frontend.react_vite_ts",
+      "pack_id": "frontend.react_vite_ts",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.frontend.nextjs",
+      "pack_id": "frontend.nextjs",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.frontend.vue_vite",
+      "pack_id": "frontend.vue_vite",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.backend.node_express",
+      "pack_id": "backend.node_express",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.backend.python_fastapi",
+      "pack_id": "backend.python_fastapi",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.backend.go_gin",
+      "pack_id": "backend.go_gin",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.backend.java_springboot",
+      "pack_id": "backend.java_springboot",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.backend.rust_cargo",
+      "pack_id": "backend.rust_cargo",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.backend.kotlin_jvm",
+      "pack_id": "backend.kotlin_jvm",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.backend.swift_windows",
+      "pack_id": "backend.swift_windows",
+      "host_class": "windows_host",
+      "readiness_class": "host_safe_subchain",
+      "reason_code": "host_boundary_windows_only",
+      "same_host_real": false,
+      "host_safe_subchain": true,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.worker.cloudflare",
+      "pack_id": "worker.cloudflare",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.fullstack.vite_fastapi",
+      "pack_id": "fullstack.vite_fastapi",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.data.sql_migration",
+      "pack_id": "data.sql_migration",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.config.yaml_schema",
+      "pack_id": "config.yaml_schema",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.infra.terraform_cli",
+      "pack_id": "infra.terraform_cli",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.crossend.react_native",
+      "pack_id": "crossend.react_native",
+      "host_class": "windows_host",
+      "readiness_class": "host_safe_subchain",
+      "reason_code": "host_safe_preflight_only",
+      "same_host_real": false,
+      "host_safe_subchain": true,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.crossend.flutter_web",
+      "pack_id": "crossend.flutter_web",
+      "host_class": "windows_host",
+      "readiness_class": "same_host_real",
+      "reason_code": "supported_same_host",
+      "same_host_real": true,
+      "host_safe_subchain": false,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.crossend.flutter_desktop",
+      "pack_id": "crossend.flutter_desktop",
+      "host_class": "windows_host",
+      "readiness_class": "host_safe_subchain",
+      "reason_code": "host_safe_preflight_only",
+      "same_host_real": false,
+      "host_safe_subchain": true,
+      "external_runner_required": false
+    },
+    {
+      "capability_id": "cap.mobile.android_release",
+      "pack_id": "mobile.android_release",
+      "host_class": "android_runner",
+      "readiness_class": "external_runner_required",
+      "reason_code": "requires_android_sdk_or_emulator",
+      "same_host_real": false,
+      "host_safe_subchain": false,
+      "external_runner_required": true
+    },
+    {
+      "capability_id": "cap.apple.ios_release",
+      "pack_id": "apple.ios_release",
+      "host_class": "macos_runner",
+      "readiness_class": "external_runner_required",
+      "reason_code": "requires_macos_xcode",
+      "same_host_real": false,
+      "host_safe_subchain": false,
+      "external_runner_required": true
+    },
+    {
+      "capability_id": "cap.apple.macos_release",
+      "pack_id": "apple.macos_release",
+      "host_class": "macos_runner",
+      "readiness_class": "external_runner_required",
+      "reason_code": "requires_macos_xcode",
+      "same_host_real": false,
+      "host_safe_subchain": false,
+      "external_runner_required": true
+    },
+    {
+      "capability_id": "cap.store.play_console_release",
+      "pack_id": "store.play_console_release",
+      "host_class": "android_runner",
+      "readiness_class": "external_runner_required",
+      "reason_code": "requires_store_credentials_and_release_host",
+      "same_host_real": false,
+      "host_safe_subchain": false,
+      "external_runner_required": true
+    },
+    {
+      "capability_id": "cap.store.app_store_release",
+      "pack_id": "store.app_store_release",
+      "host_class": "macos_runner",
+      "readiness_class": "external_runner_required",
+      "reason_code": "requires_store_credentials_and_release_host",
+      "same_host_real": false,
+      "host_safe_subchain": false,
+      "external_runner_required": true
+    }
+  ],
+  "final_status": "enabled"
+}

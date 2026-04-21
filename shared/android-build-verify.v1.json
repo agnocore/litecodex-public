@@ -1,0 +1,23 @@
+{
+  "version": "v1.android-build-verify",
+  "representative_lane": "android_release",
+  "build_mode": "preflight_build_chain",
+  "build_steps": [
+    "sdkmanager --list_installed",
+    "adb version",
+    "javac -version",
+    "gradle --version"
+  ],
+  "verify_rules": [
+    "platforms;android-34 installed",
+    "build-tools;34.0.0 installed",
+    "adb available",
+    "java/javac available"
+  ],
+  "artifact_policy": {
+    "receipt_required": true,
+    "stdout_summary_required": true,
+    "stderr_summary_required": true
+  },
+  "final_status": "enabled"
+}

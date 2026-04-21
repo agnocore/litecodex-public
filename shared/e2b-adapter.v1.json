@@ -1,0 +1,48 @@
+{
+  "version": "v1.phase6b",
+  "adapter_id": "e2b.adapter.v1",
+  "sandbox_create_policy": {
+    "max_active_sandboxes": 1,
+    "require_credential": true,
+    "timeout_ms": 120000,
+    "resource_mode": "lite_8gb"
+  },
+  "sandbox_execute_policy": {
+    "max_command_count": 3,
+    "allowed_commands": [
+      "sh -lc",
+      "node -e",
+      "python -c",
+      "cat",
+      "printf"
+    ],
+    "forbidden_commands": [
+      "deploy",
+      "delete",
+      "destroy",
+      "rm -rf /",
+      "shutdown"
+    ]
+  },
+  "sandbox_teardown_policy": {
+    "teardown_required": true,
+    "teardown_on_success": true,
+    "teardown_on_failure": true,
+    "max_teardown_wait_ms": 20000,
+    "retry_limit": 2
+  },
+  "artifact_capture_policy": {
+    "stdout_max_chars": 4096,
+    "stderr_max_chars": 4096,
+    "max_artifact_bytes": 65536,
+    "artifact_scope": "runs/<run-id>/artifacts"
+  },
+  "timeout_policy": {
+    "discovery_timeout_ms": 8000,
+    "create_timeout_ms": 45000,
+    "execute_timeout_ms": 45000,
+    "teardown_timeout_ms": 20000
+  },
+  "resource_mode": "lite_8gb",
+  "final_status": "ready | blocked | failed_controlled"
+}

@@ -1,0 +1,21 @@
+{
+  "version": "v1.ast-repair-capability",
+  "languages": [
+    "javascript_or_typescript",
+    "python"
+  ],
+  "required_pipeline": [
+    "parser",
+    "structured_diff",
+    "safe_apply",
+    "verify_retry",
+    "receipt"
+  ],
+  "safe_apply_guards": {
+    "path_jail": true,
+    "baseline_hash_required": true,
+    "current_hash_required": true,
+    "forbidden_paths_reject": true
+  },
+  "final_status": "enabled"
+}

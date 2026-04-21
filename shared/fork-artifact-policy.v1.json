@@ -1,0 +1,17 @@
+{
+  "version": "v1.phase4c",
+  "inherited_artifacts": [
+    "ledger_projection"
+  ],
+  "copied_artifacts": [],
+  "referenced_artifacts": [
+    "compact_artifact"
+  ],
+  "excluded_artifacts": [
+    "ui_screenshot",
+    "runtime_log_full"
+  ],
+  "raw_event_policy": "source_raw_events_retained_fork_has_own_event_stream",
+  "compact_artifact_policy": "allow_reference_or_copy_with_integrity_check"
+}
+

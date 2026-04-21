@@ -1,0 +1,14 @@
+{
+  "version": "v1.phase4d",
+  "run_id": "string",
+  "baseline_run_id": "string|null",
+  "compact_run_id": "string|null",
+  "lineage_parent_run_id": "string|null",
+  "lineage_child_run_ids": "string[]",
+  "hydration_mode": "raw|compact+delta|fallback_raw",
+  "reconnect_cursor": "integer|null",
+  "resume_cursor": "integer|null",
+  "artifact_refs": "string[]",
+  "terminal_status": "running|completed|failed|failed_controlled|stale_controlled",
+  "projection_integrity": "boolean"
+}

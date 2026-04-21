@@ -1,0 +1,10 @@
+{
+  "version": "v1.phase3f",
+  "adapter_id": "string",
+  "required_tool": "string",
+  "reason": "string",
+  "install_mode": "fixture_local|project_local|blocked",
+  "install_proposal_id": "string|null",
+  "policy_status": "pending|approved|rejected_*",
+  "final_status": "required|installed|rejected|failed_controlled"
+}

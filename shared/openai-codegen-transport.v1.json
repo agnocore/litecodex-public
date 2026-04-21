@@ -1,0 +1,31 @@
+{
+  "version": "phase-postv1-openai-codegen-transport-closeout.v1",
+  "provider_id": "openai_official",
+  "base_url": "https://api.openai.com/v1",
+  "endpoint": "POST /responses",
+  "model": "gpt-5.4",
+  "transport_policy": {
+    "official_only": true,
+    "single_transport_family": true,
+    "proxy_fallback_disabled": true,
+    "non_official_endpoint_fallback_disabled": true
+  },
+  "validation_route": {
+    "provider_id": "openai_official",
+    "base_url": "https://api.openai.com/v1",
+    "endpoint": "POST /responses",
+    "probe_mode": "exact"
+  },
+  "codegen_route": {
+    "provider_id": "openai_official",
+    "base_url": "https://api.openai.com/v1",
+    "endpoint": "POST /responses",
+    "structured_output_required": true
+  },
+  "fallback_policy": {
+    "non_official_disabled": true,
+    "edge_base_url_disabled": true,
+    "silent_endpoint_switch_disabled": true
+  },
+  "final_status": "active"
+}

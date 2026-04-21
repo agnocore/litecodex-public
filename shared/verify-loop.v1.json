@@ -1,0 +1,38 @@
+{
+  "version": "v1.phase3b.hardened",
+  "adapter_id": "verify.loop.v1",
+  "verify_command": "node test/add.test.js",
+  "max_attempts": 2,
+  "timeout_ms": 2000,
+  "pass_condition": {
+    "exit_code": 0
+  },
+  "failure_capture_policy": {
+    "exit_code_required": true,
+    "summary_max_chars": 512,
+    "artifact_max_bytes": 65536,
+    "persist_full_output_to_sqlite": false
+  },
+  "retry_policy": {
+    "retryable_failure_classes": [
+      "syntax_error",
+      "test_assertion_failure"
+    ],
+    "schedule": "immediate",
+    "max_retries": 1
+  },
+  "stop_policy": {
+    "non_retryable_failure_classes": [
+      "command_not_found",
+      "dependency_missing",
+      "permission_denied",
+      "timeout",
+      "unknown_failure"
+    ],
+    "on_non_retryable": "verify.controlled_failed"
+  },
+  "escalation_policy": {
+    "on_max_attempts_exhausted": "step.failed_controlled",
+    "emit_event": "verify.controlled_failed"
+  }
+}

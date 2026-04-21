@@ -1,0 +1,49 @@
+{
+  "version": "v1.phase3g",
+  "smoke_suite_cases": [
+    "file_adapter_rw",
+    "shell_command_basic",
+    "git_status_diff",
+    "verify_repair_loop",
+    "command_adjustment",
+    "dependency_install_suggestion",
+    "replay_runner",
+    "project_inspect",
+    "workspace_trust",
+    "tool_discovery",
+    "adapter_install_required_policy_reject"
+  ],
+  "required_capabilities": [
+    "local.file.read",
+    "local.file.write",
+    "local.shell.run",
+    "local.git.status",
+    "local.git.diff",
+    "local.verify.run"
+  ],
+  "required_tables": [
+    "tool_install_rollback_runs",
+    "phase3_smoke_results",
+    "consistency_checks",
+    "phase_readiness"
+  ],
+  "required_events": [
+    "phase3.closeout.started",
+    "phase3.closeout.completed",
+    "tool.install.rollback.started",
+    "tool.install.rollback.completed",
+    "tool.install.rollback.verified",
+    "phase3.smoke.case.started",
+    "phase3.smoke.case.completed",
+    "phase3.smoke.case.failed_controlled",
+    "contract.consistency.checked",
+    "schema.consistency.checked",
+    "phase4.readiness.checked"
+  ],
+  "readiness_criteria": {
+    "smoke_suite_all_passed": true,
+    "consistency_checks_passed": true,
+    "rollback_verification_required": true
+  },
+  "final_status": "ready|blocked"
+}

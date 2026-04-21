@@ -1,0 +1,25 @@
+{
+  "version": "v1.phase5d",
+  "pending_persistence_ready": false,
+  "approval_decision_ready": false,
+  "same_run_continue_ready": false,
+  "phase5d_ready": false,
+  "phase5e_ready": false,
+  "blocked_modules": [],
+  "allowed_external_targets": [
+    "https://developers.cloudflare.com/",
+    "https://vercel.com/docs",
+    "https://supabase.com/docs"
+  ],
+  "forbidden_actions": [
+    "wrangler deploy",
+    "vercel deploy",
+    "supabase db push",
+    "destructive click",
+    "settings mutate",
+    "billing mutate",
+    "secrets mutate",
+    "dns mutate"
+  ],
+  "evidence_root": "evidence/phase5d-approval-pending"
+}

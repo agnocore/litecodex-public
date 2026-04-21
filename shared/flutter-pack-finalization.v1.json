@@ -1,0 +1,19 @@
+{
+  "version": "v1.flutter-pack-finalization",
+  "pack_split": {
+    "runnable_pack": "crossend.flutter_web",
+    "deferred_pack": "crossend.flutter_desktop_host_blocked"
+  },
+  "detection_chain": [
+    "flutter --version",
+    "dart --version",
+    "flutter doctor -v"
+  ],
+  "host_supported_targets": [
+    "web",
+    "windows_desktop"
+  ],
+  "desktop_policy": "desktop_is_deferred_when_host_prerequisites_missing",
+  "web_policy": "web_must_complete_if_flutter_sdk_available",
+  "final_status": "enabled"
+}

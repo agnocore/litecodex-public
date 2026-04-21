@@ -1,0 +1,21 @@
+{
+  "version": "v1.source-hit.retrieval-governance-closeout",
+  "provider": "tavily | exa | firecrawl_scrape | firecrawl_extract",
+  "url": "string",
+  "canonical_url": "string",
+  "domain": "string",
+  "title": "string",
+  "snippet": "string",
+  "markdown": "string | null",
+  "extracted_json": "object | null",
+  "published_at": "ISO-8601 | null",
+  "fetched_at": "ISO-8601",
+  "score": "number | null",
+  "fetch_reason": "search | scrape | extract",
+  "citation_label": "string",
+  "domain_trust_tier": "high | medium | low | blocked",
+  "stale_score": "number",
+  "citation_eligible": "boolean",
+  "citation_reject_reason": "string | null",
+  "dedup_cluster_id": "string"
+}

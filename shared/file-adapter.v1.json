@@ -1,0 +1,24 @@
+{
+  "version": "v1",
+  "adapter_id": "file.adapter.v1",
+  "operations": ["read_file", "write_file", "patch_file", "list_dir"],
+  "forbidden_paths": [
+    "C:/Windows",
+    "C:/Program Files",
+    "C:/Program Files (x86)",
+    "C:/Users",
+    "/",
+    "/etc",
+    "/usr",
+    "/var"
+  ],
+  "max_file_size_bytes": 1048576,
+  "path_policy": {
+    "workspace_only": true,
+    "allow_relative": true
+  },
+  "evidence_policy": {
+    "store_hash_only": true,
+    "store_summary_only": true
+  }
+}

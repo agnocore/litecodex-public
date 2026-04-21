@@ -1,0 +1,135 @@
+{
+  "version": "v1",
+  "description": "Recipe-driven auth challenge selection for lite-codex local host",
+  "recipes": [
+    {
+      "id": "wrangler_oauth_login",
+      "mode": "browser_oauth",
+      "platform": "cloudflare_wrangler",
+      "challenge_renderer": "command_rendered",
+      "verifier_id": "wrangler_oauth_verifier",
+      "default_required_capability": "cloudflare.account.authenticated",
+      "probe_before_challenge": true,
+      "external_completion_detection": {
+        "enabled": true,
+        "poll_ms": 1500,
+        "timeout_ms": 180000
+      },
+      "challenge": {
+        "command_template": "{wrangler_login_command}",
+        "instruction": "Run Wrangler OAuth login in a local terminal and complete browser/2FA flow; host auto-detects completion.",
+        "instruction_cn": "在本机终端执行 Wrangler 登录命令并完成浏览器/2FA，host 会自动检测完成状态。",
+        "prefer_scopes": [
+          "account:read",
+          "user:read"
+        ],
+        "no_auto_spawn": true
+      },
+      "grant": {
+        "default_ttl_seconds": 3600
+      }
+    },
+    {
+      "id": "recipe.vercel_cli_login.real.v1",
+      "mode": "cli_login",
+      "platform": "vercel",
+      "challenge_renderer": "command_rendered",
+      "verifier_id": "verifier.vercel_cli_login.real.v1",
+      "default_required_capability": "vercel.account.authenticated",
+      "probe_before_challenge": true,
+      "external_completion_detection": {
+        "enabled": true,
+        "poll_ms": 1500,
+        "timeout_ms": 180000
+      },
+      "challenge": {
+        "command_template": "vercel login",
+        "instruction": "Run `vercel login` in a local terminal, complete browser/email OTP, then keep this run open for auto-detect.",
+        "instruction_cn": "请在本机终端执行 `vercel login`，完成邮箱/浏览器授权后保持当前 run 等待自动检测。",
+        "no_auto_spawn": true
+      },
+      "grant": {
+        "default_ttl_seconds": 3600
+      }
+    },
+    {
+      "id": "supabase_token_input",
+      "mode": "token_input",
+      "platform": "supabase",
+      "challenge_renderer": "input_requested",
+      "verifier_id": "supabase_token_verifier",
+      "default_required_capability": "supabase.project.read",
+      "probe_before_challenge": false,
+      "external_completion_detection": {
+        "enabled": false,
+        "poll_ms": 0,
+        "timeout_ms": 0
+      },
+      "challenge": {
+        "input_type": "token",
+        "input_hint": "Paste Supabase CLI PAT/access token in local UI only (memory-only, never persisted).",
+        "instruction": "Token is consumed in host process memory for one read-only verification and then cleared.",
+        "memory_only": true
+      },
+      "grant": {
+        "default_ttl_seconds": 3600
+      }
+    },
+    {
+      "id": "recipe.browser_oauth.local.v1",
+      "mode": "browser_oauth",
+      "challenge_renderer": "browser_opened",
+      "verifier_id": "verifier.browser_oauth.local_confirm.v1",
+      "default_required_capability": "cloudflare.deploy",
+      "challenge": {
+        "browser_url_template": "http://127.0.0.1:{host_port}/mock/browser-oauth?session={auth_session_id}",
+        "callback_hint": "Complete browser OAuth and confirm in local UI."
+      },
+      "grant": {
+        "default_ttl_seconds": 900
+      }
+    },
+    {
+      "id": "recipe.cli_login.local.v1",
+      "mode": "cli_login",
+      "challenge_renderer": "command_rendered",
+      "verifier_id": "verifier.cli_login.local_confirm.v1",
+      "default_required_capability": "vercel.project.read",
+      "challenge": {
+        "command_template": "mock-cli login --session {auth_session_id}",
+        "instruction": "Run the local login command and then confirm."
+      },
+      "grant": {
+        "default_ttl_seconds": 900
+      }
+    },
+    {
+      "id": "recipe.token_input.local.v1",
+      "mode": "token_input",
+      "challenge_renderer": "input_requested",
+      "verifier_id": "verifier.token_input.local_nonempty.v1",
+      "default_required_capability": "supabase.project.read",
+      "challenge": {
+        "input_type": "token",
+        "input_hint": "Input token/PAT locally; it remains memory-only."
+      },
+      "grant": {
+        "default_ttl_seconds": 900
+      }
+    },
+    {
+      "id": "recipe.device_code.local.v1",
+      "mode": "device_code",
+      "challenge_renderer": "command_rendered",
+      "verifier_id": "verifier.device_code.local_confirm.v1",
+      "default_required_capability": "ssh.host.x",
+      "challenge": {
+        "command_template": "Open https://device.local/activate and input code DEV-{auth_session_id}",
+        "instruction": "Finish device activation flow and then confirm."
+      },
+      "grant": {
+        "default_ttl_seconds": 900
+      }
+    }
+  ]
+}

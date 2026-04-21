@@ -1,0 +1,14 @@
+{
+  "version": "v1.byo-key-binding.exact",
+  "provider": "openai",
+  "binding_id": "string",
+  "binding_scope": "browser_profile_scope",
+  "browser_profile_id_hash": "sha256_hex",
+  "machine_scope_id_hash": "sha256_hex",
+  "public_key_fingerprint": "sha256_hex",
+  "host_memory_only": true,
+  "browser_local_persistence": "metadata_and_non_exportable_private_key_in_profile",
+  "status": "bound | valid | invalid | unbound | deleted",
+  "created_at": "ISO-8601",
+  "deleted_at": "ISO-8601 | null"
+}

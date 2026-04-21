@@ -1,0 +1,19 @@
+{
+  "version": "v1.deploy-standardization",
+  "stack_categories": [
+    "frontend",
+    "backend_api",
+    "edge_worker"
+  ],
+  "contracts": {
+    "deploy_preflight_contract": "deploy-closeout.v1.json",
+    "deploy_result_receipt_contract": "deploy-closeout.v1.json",
+    "online_verification_contract": "online-verification.v1.json"
+  },
+  "gates": {
+    "preflight_required": true,
+    "receipt_required": true,
+    "online_verification_required": true
+  },
+  "final_status": "enabled"
+}

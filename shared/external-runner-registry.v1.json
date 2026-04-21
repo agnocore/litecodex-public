@@ -1,0 +1,51 @@
+{
+  "version": "v1.external-runner-registry",
+  "runners": [
+    {
+      "runner_id": "windows_host",
+      "host_class": "windows_host",
+      "host_os": "windows",
+      "readiness_class": "same_host_real",
+      "supported_lanes": [
+        "runner.protocol.alive",
+        "android.preflight.detect",
+        "android.release.preflight",
+        "flutter.android.preflight"
+      ],
+      "job_protocol": "runner-job-protocol.v1",
+      "artifact_sync": "runner-artifact-sync.v1",
+      "failure_policy": "runner-failure-policy.v1",
+      "status": "enabled"
+    },
+    {
+      "runner_id": "android_runner",
+      "host_class": "android_runner",
+      "host_os": "windows_or_linux",
+      "readiness_class": "external_runner_required",
+      "supported_lanes": [
+        "android.release",
+        "flutter.android"
+      ],
+      "job_protocol": "runner-job-protocol.v1",
+      "artifact_sync": "runner-artifact-sync.v1",
+      "failure_policy": "runner-failure-policy.v1",
+      "status": "enabled"
+    },
+    {
+      "runner_id": "macos_runner",
+      "host_class": "macos_runner",
+      "host_os": "macos",
+      "readiness_class": "external_runner_required",
+      "supported_lanes": [
+        "apple.ios_release",
+        "apple.macos_release",
+        "store.app_store_release"
+      ],
+      "job_protocol": "runner-job-protocol.v1",
+      "artifact_sync": "runner-artifact-sync.v1",
+      "failure_policy": "runner-failure-policy.v1",
+      "status": "enabled"
+    }
+  ],
+  "final_status": "enabled"
+}

@@ -1,0 +1,23 @@
+{
+  "version": "v1.android-sdk-layout",
+  "sdk_root_policy": {
+    "managed_root": "litecodex/.toolchains/android-sdk",
+    "allow_host_existing_sdk": true,
+    "allow_global_path_mutation": false
+  },
+  "required_paths": [
+    "cmdline-tools/latest/bin/sdkmanager.bat",
+    "platform-tools/adb.exe",
+    "build-tools/34.0.0",
+    "platforms/android-34"
+  ],
+  "optional_paths": [
+    "emulator/emulator.exe",
+    "system-images"
+  ],
+  "compat_env": [
+    "ANDROID_SDK_ROOT",
+    "ANDROID_HOME"
+  ],
+  "final_status": "enabled"
+}

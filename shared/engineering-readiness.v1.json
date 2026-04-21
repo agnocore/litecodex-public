@@ -1,0 +1,11 @@
+{
+  "version": "v1.engineering-readiness",
+  "engineering_compiler_ready": false,
+  "polyglot_skills_ready": false,
+  "auto_verify_ready": false,
+  "review_gate_ready": false,
+  "real_model_codegen_ready": false,
+  "production_code_task_ready": false,
+  "blocked_modules": [],
+  "evidence_root": "evidence/task-to-engineering-closeout"
+}

@@ -1,0 +1,41 @@
+{
+  "version": "v1.apple-runner-lane",
+  "lanes": [
+    {
+      "lane_id": "apple.ios_release",
+      "required_runner": "macos_runner",
+      "required_host_os": "macos",
+      "required_toolchains": [
+        "xcode",
+        "swift",
+        "cocoapods"
+      ],
+      "required_credentials": [
+        "apple_developer_credentials"
+      ],
+      "required_services": [
+        "app_store_connect"
+      ],
+      "blocking_scope": "external_runner_required",
+      "non_blocking_default": true
+    },
+    {
+      "lane_id": "apple.macos_release",
+      "required_runner": "macos_runner",
+      "required_host_os": "macos",
+      "required_toolchains": [
+        "xcode",
+        "swift"
+      ],
+      "required_credentials": [
+        "apple_developer_credentials"
+      ],
+      "required_services": [
+        "app_store_connect"
+      ],
+      "blocking_scope": "external_runner_required",
+      "non_blocking_default": true
+    }
+  ],
+  "final_status": "enabled"
+}

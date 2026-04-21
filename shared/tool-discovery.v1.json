@@ -1,0 +1,16 @@
+{
+  "version": "v1.phase3f",
+  "tool_name": "string",
+  "discovery_sources": [
+    "PATH",
+    "env",
+    "tool_registry",
+    "fixture_local"
+  ],
+  "env_var_name": "string|null",
+  "registry_path": "string|null",
+  "resolved_path": "string|null",
+  "version_command": "string",
+  "version_result": "string|null",
+  "status": "found|missing|invalid"
+}

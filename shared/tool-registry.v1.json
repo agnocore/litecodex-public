@@ -1,0 +1,144 @@
+{
+    "version":  "v1.phase6a",
+    "tools":  [
+                  {
+                      "tool_id":  "node",
+                      "env_var":  "NODE_CLI_PATH",
+                      "path_candidates":  [
+
+                                          ],
+                      "path_lookup":  "node",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  },
+                  {
+                      "tool_id":  "git",
+                      "env_var":  "GIT_CLI_PATH",
+                      "path_candidates":  [
+
+                                          ],
+                      "path_lookup":  "git",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  },
+                  {
+                      "tool_id":  "npm_cli",
+                      "env_var":  "NPM_CLI_PATH",
+                      "path_candidates":  [
+
+                                          ],
+                      "path_lookup":  "npm",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  },
+                  {
+                      "tool_id":  "supabase_cli",
+                      "env_var":  "SUPABASE_CLI_PATH",
+                      "path_candidates":  [
+                                              "C:/Users/HP/Downloads/supabase_windows_amd64.tar/supabase_windows_amd64/supabase.exe"
+                                          ],
+                      "path_lookup":  "supabase",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  },
+                  {
+                      "tool_id":  "wrangler",
+                      "env_var":  "WRANGLER_CLI_PATH",
+                      "path_candidates":  [
+
+                                          ],
+                      "path_lookup":  "wrangler",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  },
+                  {
+                      "tool_id":  "vercel",
+                      "env_var":  "VERCEL_CLI_PATH",
+                      "path_candidates":  [
+
+                                          ],
+                      "path_lookup":  "vercel",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  },
+                  {
+                      "tool_id":  "edge_browser",
+                      "env_var":  "EDGE_BROWSER_PATH",
+                      "path_candidates":  [
+                                              "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+                                              "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+                                              "C:/Users/HP/AppData/Local/Microsoft/Edge/Application/msedge.exe"
+                                          ],
+                      "path_lookup":  "msedge",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  },
+                  {
+                      "tool_id":  "chrome_browser",
+                      "env_var":  "CHROME_BROWSER_PATH",
+                      "path_candidates":  [
+                                              "C:/Program Files/Google/Chrome/Application/chrome.exe",
+                                              "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+                                              "C:/Users/HP/AppData/Local/Google/Chrome/Application/chrome.exe"
+                                          ],
+                      "path_lookup":  "chrome",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  },
+                  {
+                      "tool_id":  "playwright_cli",
+                      "env_var":  "PLAYWRIGHT_CLI_PATH",
+                      "path_candidates":  [
+                                              "workspaces/phase5b-fixture/node_modules/.bin/playwright.cmd",
+                                              "workspaces/phase5b-fixture/node_modules/.bin/playwright",
+                                              "node_modules/.bin/playwright.cmd",
+                                              "node_modules/.bin/playwright"
+                                          ],
+                      "path_lookup":  "playwright",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  },
+                  {
+                      "tool_id":  "e2b_cli",
+                      "env_var":  "E2B_CLI_PATH",
+                      "path_candidates":  [
+
+                                          ],
+                      "path_lookup":  "e2b",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  },
+                  {
+                      "tool_id":  "fixture_fake_tool",
+                      "env_var":  "FIXTURE_FAKE_TOOL_PATH",
+                      "path_candidates":  [
+
+                                          ],
+                      "path_lookup":  "fixture_fake_tool",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  },
+                  {
+                      "tool_id":  "missing_fake_tool",
+                      "env_var":  "MISSING_FAKE_TOOL_PATH",
+                      "path_candidates":  [
+
+                                          ],
+                      "path_lookup":  "missing_fake_tool",
+                      "probe_args":  [
+                                         "--version"
+                                     ]
+                  }
+              ]
+}

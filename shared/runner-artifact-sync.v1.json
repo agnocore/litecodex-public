@@ -1,0 +1,18 @@
+{
+  "version": "v1.runner-artifact-sync",
+  "sync_direction": [
+    "runner_to_host"
+  ],
+  "allowed_artifact_roots": [
+    "runs/{run_id}/artifacts"
+  ],
+  "artifact_types": [
+    "job_receipt",
+    "runner_log_summary",
+    "verify_receipt",
+    "boundary_receipt"
+  ],
+  "max_artifact_bytes": 262144,
+  "sync_receipt_required": true,
+  "final_status": "enabled"
+}

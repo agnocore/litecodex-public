@@ -1,0 +1,10 @@
+{
+  "version": "v1.repo-plan",
+  "plan_id": "string",
+  "workspace_root": "absolute_path",
+  "module_roots": ["string"],
+  "repo_heuristics": ["string"],
+  "topology": "single_repo | monorepo",
+  "required_files": ["string"],
+  "final_status": "planned | blocked"
+}

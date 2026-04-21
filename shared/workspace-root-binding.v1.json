@@ -1,0 +1,12 @@
+{
+  "version": "v1.workspace-root-binding",
+  "root_id": "string",
+  "working_root": "workspaces/deploy-fixture",
+  "project_root_markers": ["package.json", ".git", "AGENTS.md", "vercel.json"],
+  "detected_project_root": "absolute_path",
+  "root_config_sources": ["AGENTS.md", ".litecodex.config.json"],
+  "allowed_subpaths": ["src", "public", "scripts", ".litecodex/tasks"],
+  "forbidden_subpaths": [".git", "node_modules", ".."],
+  "ancestor_policy": "reject_outside_root_and_ancestor_collision",
+  "final_status": "bound | rejected"
+}

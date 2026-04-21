@@ -1,0 +1,61 @@
+{
+  "version": "v1.phase5c",
+  "allowed_local_targets": [
+    "file://workspaces/phase5a-fixture",
+    "file://workspaces/phase5b-fixture",
+    "file://workspaces/phase5c-fixture",
+    "http://127.0.0.1",
+    "http://localhost"
+  ],
+  "forbidden_remote_targets": [
+    "https://* not in external allowlist",
+    "http://* except localhost"
+  ],
+  "external_readonly_allowlist_ref": "shared/browser-external-allowlist.v1.json",
+  "approval_escalation_ref": "shared/approval-escalation.v1.json",
+  "write_action_policy": "reject_remote_write",
+  "fill": {
+    "allowed": true,
+    "allowed_inputs": "safe_local_only"
+  },
+  "redirect": {
+    "allow_local_redirect_only": true,
+    "forbid_cross_origin_redirect": true
+  },
+  "popup": {
+    "allow_local_popup_simulation": true,
+    "block_remote_popup_navigation": true
+  },
+  "upload_download_policy": {
+    "upload_file": "reject",
+    "download_file": "reject"
+  },
+  "readonly_verification_policy": {
+    "allow": true,
+    "targets": [
+      "local",
+      "readonly_cli_state",
+      "external_allowlist_readonly"
+    ],
+    "forbid_write_actions": true
+  },
+  "forbidden_action_policy": {
+    "destructive_selectors": "reject",
+    "destructive_paths": "reject",
+    "unknown_external_target": "reject_or_escalate"
+  },
+  "screenshot_policy": "allow_local_and_external_allowlist",
+  "screenshot_redaction_policy": {
+    "url_query_sensitive_keys": [
+      "token",
+      "otp",
+      "code",
+      "session",
+      "auth",
+      "key"
+    ],
+    "mask_email_in_logs": true
+  },
+  "install_policy": "project_or_fixture_local_only",
+  "risk_level": "low"
+}

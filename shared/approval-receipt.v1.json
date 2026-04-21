@@ -1,0 +1,13 @@
+{
+  "version": "v1.phase5d",
+  "approval_receipt": {
+    "approval_request_id": "string",
+    "decision": "approved|rejected|expired|cancelled",
+    "decided_at": "ISO-8601",
+    "decision_source": "ui_manual|api_manual|system_expiry",
+    "approver_type": "local_user|system",
+    "run_id": "string",
+    "continuation_policy": "same_run_continue|required_terminal_on_reject",
+    "receipt_path": "runs/<run-id>/artifacts/approval_receipt_<id>.json"
+  }
+}

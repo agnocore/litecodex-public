@@ -1,0 +1,13 @@
+{
+  "version": "v1.phase5b-closeout",
+  "discovery_sources": ["PATH", "env", "tool_registry", "fixture_local", "project_local"],
+  "cli_status": "available|missing|invalid",
+  "browser_binary_status": "present|not_installed|unknown",
+  "install_required": true,
+  "install_mode": "fixture_local|project_local|blocked",
+  "skip_browser_download": true,
+  "cli_path": "",
+  "browser_channel_used": "edge|chrome|unknown",
+  "blocked_reason": "",
+  "final_status": "ready|blocked"
+}

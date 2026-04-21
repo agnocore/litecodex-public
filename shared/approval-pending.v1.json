@@ -1,0 +1,16 @@
+{
+  "version": "v1.phase5d",
+  "approval_request": {
+    "approval_request_id": "string",
+    "run_id": "string",
+    "provider": "cloudflare|vercel|supabase",
+    "target_url": "sanitized_url",
+    "request_type": "browser_external_verification",
+    "policy_action": "escalate",
+    "pending_reason": "allowlist_partial_or_missing|policy_escalation",
+    "pending_since": "ISO-8601",
+    "expires_at": "ISO-8601",
+    "status": "pending|approved|rejected|expired|cancelled",
+    "final_status": "pending|continued_completed|failed_controlled|expired|cancelled"
+  }
+}

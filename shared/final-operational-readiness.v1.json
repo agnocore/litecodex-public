@@ -1,0 +1,11 @@
+{
+  "version": "v1.final-operational-readiness",
+  "workspace_root_binding_ready": false,
+  "task_storage_root_ready": false,
+  "real_deploy_closeout_ready": false,
+  "online_verification_ready": false,
+  "release_flow_ready": false,
+  "litecodex_v1_operational_ready": false,
+  "blocked_modules": [],
+  "evidence_root": "evidence/workspace-root-deploy-closeout"
+}

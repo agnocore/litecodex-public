@@ -1,0 +1,19 @@
+{
+  "version": "v1.crossend-pack-hardening",
+  "pack_id": "crossend.react_native",
+  "runtime": "react-native",
+  "hardening_dimensions": [
+    "toolchain_ready",
+    "verify_matrix_wired",
+    "review_gate_wired",
+    "repair_policy_wired",
+    "path_jail_enforced",
+    "representative_task_passed"
+  ],
+  "non_covered_dimensions": [
+    "device_emulator_full_build",
+    "app_store_release_pipeline"
+  ],
+  "readiness_rule": "pack_hardening_ready_requires_explicit_coverage_and_blocker_or_pass",
+  "final_status": "enabled"
+}

@@ -1,0 +1,53 @@
+{
+  "version": "v1.phase5c",
+  "allowed_readonly_commands": [
+    "wrangler --version",
+    "wrangler whoami --json",
+    "vercel --version",
+    "vercel whoami",
+    "vercel teams ls",
+    "vercel project ls",
+    "vercel projects ls",
+    "supabase --version",
+    "supabase projects list -o json"
+  ],
+  "forbidden_deploy_commands": [
+    "wrangler deploy",
+    "vercel deploy",
+    "supabase functions deploy"
+  ],
+  "forbidden_secret_commands": [
+    "wrangler secret",
+    "vercel env add",
+    "supabase secrets set",
+    "supabase secrets unset"
+  ],
+  "forbidden_dns_commands": [
+    "wrangler dns",
+    "vercel domains add",
+    "vercel domains rm"
+  ],
+  "forbidden_db_write_commands": [
+    "supabase db push",
+    "supabase db reset",
+    "supabase migration",
+    "supabase start"
+  ],
+  "approval_required_actions": [
+    "any_deploy",
+    "any_secret_write",
+    "any_dns_write",
+    "any_db_write"
+  ],
+  "external_browser_verification_interplay": {
+    "allow_readonly_external_verification": true,
+    "require_allowlist_and_approval_escalation": true,
+    "forbid_external_write_actions": true,
+    "persist_reject_receipts": true
+  },
+  "deploy_write_destructive_reject_persistence": {
+    "persist_to_ledger_table": "deploy_policy_checks",
+    "emit_event": "deploy.action.rejected"
+  },
+  "policy_action": "allow|reject|escalate"
+}

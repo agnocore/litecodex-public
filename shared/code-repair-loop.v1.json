@@ -1,0 +1,8 @@
+{
+  "version": "v1.code-repair-loop",
+  "max_attempts": 3,
+  "trigger": "verify_or_review_fail",
+  "strategy": "stack_profile_plus_file_plan_driven",
+  "attempt_ceiling_enforced": true,
+  "final_status": "enabled"
+}

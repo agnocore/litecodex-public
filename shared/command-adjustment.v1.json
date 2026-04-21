@@ -1,0 +1,24 @@
+{
+  "version": "v1.phase3d",
+  "input": {
+    "failed_command": "string",
+    "cwd": "string",
+    "exit_code": "number|null",
+    "stdout_summary": "string",
+    "stderr_summary": "string",
+    "failure_class": "string"
+  },
+  "output": {
+    "adjusted_command": "string",
+    "adjusted_cwd": "string",
+    "reason": "string",
+    "confidence": "number",
+    "risk_level": "low|medium|high"
+  },
+  "constraints": {
+    "workspace_scoped_only": true,
+    "no_destructive_command": true,
+    "no_deploy_command": true
+  }
+}
+

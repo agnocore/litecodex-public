@@ -1,0 +1,43 @@
+{
+  "version": "v1.android-runner-lane",
+  "lane_id": "android_release",
+  "runner_id": "android_runner",
+  "required_prerequisites": [
+    "ANDROID_SDK_ROOT_or_ANDROID_HOME",
+    "adb",
+    "emulator_or_device",
+    "java",
+    "gradle",
+    "kotlinc"
+  ],
+  "optional_prerequisites": [
+    "flutter"
+  ],
+  "fulfillment_policy": {
+    "allow_managed_fulfillment": true,
+    "allow_global_path_mutation": false,
+    "install_roots": [
+      "litecodex/.toolchains",
+      "litecodex/workspaces"
+    ]
+  },
+  "representative_job": {
+    "job_type": "android.representative.preflight_verify",
+    "commands": [
+      "adb version",
+      "java -version",
+      "gradle --version"
+    ],
+    "verify_required": true,
+    "artifact_required": true
+  },
+  "flutter_android_job": {
+    "job_type": "flutter.android.representative",
+    "commands": [
+      "flutter --version",
+      "flutter doctor -v"
+    ],
+    "honest_block_allowed": true
+  },
+  "final_status": "enabled"
+}

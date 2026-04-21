@@ -1,0 +1,14 @@
+{
+  "version": "v1.phase4c",
+  "source_run_id": "string",
+  "fork_run_id": "string",
+  "baseline_run_id": "string|null",
+  "fork_reason": "string",
+  "fork_mode": "hydrate_only|repair_then_complete|resumable_active|event_burst_complete",
+  "source_status": "running|completed|failed|failed_controlled|stale_controlled",
+  "inherit_context_policy": "ledger_projection_plus_lineage",
+  "fork_workspace_policy": "workspace_copy_isolated",
+  "artifact_copy_policy": "reference_or_copy_by_mapping_policy",
+  "final_status": "running|completed|failed|failed_controlled"
+}
+

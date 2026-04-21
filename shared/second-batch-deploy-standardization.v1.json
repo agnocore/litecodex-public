@@ -1,0 +1,14 @@
+{
+  "version": "v1.second-batch-deploy-standardization",
+  "categories": [
+    "compiled_backend",
+    "infra_config"
+  ],
+  "required_chain": [
+    "deploy_preflight_contract",
+    "readonly_or_non_destructive_verification",
+    "standardized_receipt"
+  ],
+  "destructive_actions_forbidden": true,
+  "final_status": "enabled"
+}

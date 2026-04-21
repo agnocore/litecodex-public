@@ -1,0 +1,27 @@
+{
+  "version": "v1.phase3g",
+  "snapshot_id": "string",
+  "install_run_id": "string",
+  "affected_files": "string[]",
+  "package_json_hash_before": "string|null",
+  "lockfile_hash_before": "string|null",
+  "tool_files_hash_before": {
+    "relative_path": "sha256|null"
+  },
+  "restore_steps": [
+    "restore_file_states",
+    "remove_generated_tool_files",
+    "verify_hashes",
+    "verify_git_status"
+  ],
+  "hash_verification": {
+    "status": "passed|failed",
+    "details": "object"
+  },
+  "git_status_verification": {
+    "status": "passed|failed",
+    "before": "string",
+    "after": "string"
+  },
+  "final_status": "completed|failed"
+}

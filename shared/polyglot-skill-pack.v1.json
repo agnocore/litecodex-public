@@ -1,0 +1,468 @@
+{
+  "version": "v1.polyglot-skill-pack.expansion",
+  "packs": [
+    {
+      "skill_id": "frontend.react_vite_ts",
+      "trigger_conditions": [
+        "vite.config",
+        "react marker",
+        "tsconfig.json"
+      ],
+      "required_files": [
+        "package.json",
+        "src/counter.js"
+      ],
+      "repo_heuristics": [
+        "react dependency",
+        "vite scripts",
+        "typescript config"
+      ],
+      "verify_matrix": [
+        "format",
+        "lint",
+        "typecheck_or_compile",
+        "unit_or_integration_tests",
+        "startup_smoke"
+      ],
+      "repair_policy": "auto_repair_with_attempt_ceiling",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "hardcoded_secret_risk",
+        "stack_convention_consistency"
+      ]
+    },
+    {
+      "skill_id": "frontend.nextjs",
+      "trigger_conditions": [
+        "next.config",
+        "app/ or pages/"
+      ],
+      "required_files": [
+        "package.json"
+      ],
+      "repo_heuristics": [
+        "next dependency",
+        "next scripts"
+      ],
+      "verify_matrix": [
+        "format",
+        "lint",
+        "typecheck_or_compile",
+        "unit_or_integration_tests",
+        "startup_smoke"
+      ],
+      "repair_policy": "auto_repair_with_attempt_ceiling",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "dangerous_command_risk",
+        "diff_size_touched_files_policy"
+      ]
+    },
+    {
+      "skill_id": "frontend.vue_vite",
+      "trigger_conditions": [
+        "vite.config",
+        "vue marker"
+      ],
+      "required_files": [
+        "package.json",
+        "src/main.ts"
+      ],
+      "repo_heuristics": [
+        "vue dependency",
+        "vite scripts"
+      ],
+      "verify_matrix": [
+        "format",
+        "lint",
+        "typecheck_or_compile",
+        "unit_or_integration_tests",
+        "startup_smoke"
+      ],
+      "repair_policy": "auto_repair_with_attempt_ceiling",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "stack_convention_consistency",
+        "deploy_command_normalization"
+      ]
+    },
+    {
+      "skill_id": "backend.node_express",
+      "trigger_conditions": [
+        "express marker",
+        "server entry"
+      ],
+      "required_files": [
+        "package.json",
+        "src/server.js"
+      ],
+      "repo_heuristics": [
+        "node backend signatures"
+      ],
+      "verify_matrix": [
+        "lint",
+        "typecheck_or_compile",
+        "unit_or_integration_tests",
+        "startup_smoke"
+      ],
+      "repair_policy": "auto_repair_with_attempt_ceiling",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "hardcoded_secret_risk",
+        "dangerous_command_risk",
+        "stack_convention_consistency"
+      ]
+    },
+    {
+      "skill_id": "backend.python_fastapi",
+      "trigger_conditions": [
+        "FastAPI import",
+        "app/main.py"
+      ],
+      "required_files": [
+        "app/main.py"
+      ],
+      "repo_heuristics": [
+        "python backend signatures",
+        "tests/"
+      ],
+      "verify_matrix": [
+        "lint",
+        "typecheck_or_compile",
+        "unit_or_integration_tests",
+        "startup_smoke"
+      ],
+      "repair_policy": "auto_repair_with_attempt_ceiling",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "dependency_policy",
+        "stack_convention_consistency"
+      ]
+    },
+    {
+      "skill_id": "backend.go_gin",
+      "trigger_conditions": [
+        "go.mod",
+        "gin or fiber import"
+      ],
+      "required_files": [
+        "go.mod",
+        "main.go"
+      ],
+      "repo_heuristics": [
+        "go backend signatures"
+      ],
+      "verify_matrix": [
+        "typecheck_or_compile",
+        "unit_or_integration_tests",
+        "startup_smoke"
+      ],
+      "repair_policy": "auto_repair_with_attempt_ceiling",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "diff_size_touched_files_policy",
+        "stack_convention_consistency"
+      ]
+    },
+    {
+      "skill_id": "backend.java_springboot",
+      "trigger_conditions": [
+        "pom.xml or build.gradle",
+        "spring annotations"
+      ],
+      "required_files": [
+        "pom.xml",
+        "src/main/java/com/litecodex/GreetingService.java"
+      ],
+      "repo_heuristics": [
+        "java backend signatures"
+      ],
+      "verify_matrix": [
+        "typecheck_or_compile",
+        "unit_or_integration_tests",
+        "startup_smoke"
+      ],
+      "repair_policy": "auto_repair_with_attempt_ceiling",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "dependency_policy",
+        "stack_convention_consistency"
+      ]
+    },
+    {
+      "skill_id": "worker.cloudflare",
+      "trigger_conditions": [
+        "wrangler.toml",
+        "worker entry"
+      ],
+      "required_files": [
+        "wrangler.toml",
+        "src/worker.js"
+      ],
+      "repo_heuristics": [
+        "cloudflare worker signatures"
+      ],
+      "verify_matrix": [
+        "typecheck_or_compile",
+        "unit_or_integration_tests"
+      ],
+      "repair_policy": "auto_repair_with_attempt_ceiling",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "dangerous_command_risk",
+        "deploy_command_normalization",
+        "path_jail"
+      ]
+    },
+    {
+      "skill_id": "fullstack.vite_fastapi",
+      "trigger_conditions": [
+        "frontend + backend roots",
+        "vite + fastapi markers"
+      ],
+      "required_files": [
+        "frontend/package.json",
+        "backend/app/service.py"
+      ],
+      "repo_heuristics": [
+        "cross-end contract signatures"
+      ],
+      "verify_matrix": [
+        "frontend_verify",
+        "backend_verify",
+        "integration_smoke"
+      ],
+      "repair_policy": "auto_repair_with_attempt_ceiling",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "stack_convention_consistency",
+        "diff_size_touched_files_policy"
+      ]
+    },
+    {
+      "skill_id": "crossend.react_native",
+      "trigger_conditions": [
+        "react-native marker",
+        "metro config"
+      ],
+      "required_files": [
+        "package.json",
+        "app/App.tsx"
+      ],
+      "repo_heuristics": [
+        "mobile signatures"
+      ],
+      "verify_matrix": [
+        "lint",
+        "typecheck_or_compile",
+        "unit_or_integration_tests"
+      ],
+      "repair_policy": "bounded_repair",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "hardcoded_secret_risk",
+        "stack_convention_consistency"
+      ]
+    },
+    {
+      "skill_id": "backend.rust_cargo",
+      "trigger_conditions": [
+        "Cargo.toml",
+        "src/lib.rs"
+      ],
+      "required_files": [
+        "Cargo.toml",
+        "src/lib.rs"
+      ],
+      "repo_heuristics": [
+        "rust crate layout",
+        "cargo test available"
+      ],
+      "verify_matrix": [
+        "fmt_or_lint",
+        "typecheck_or_compile",
+        "unit_or_integration_tests"
+      ],
+      "repair_policy": "auto_repair_with_attempt_ceiling",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "stack_convention_consistency",
+        "dangerous_command_risk"
+      ]
+    },
+    {
+      "skill_id": "infra.terraform_cli",
+      "trigger_conditions": [
+        ".tf files",
+        "terraform block"
+      ],
+      "required_files": [
+        "main.tf"
+      ],
+      "repo_heuristics": [
+        "terraform preflight only"
+      ],
+      "verify_matrix": [
+        "terraform_fmt_check",
+        "terraform_validate"
+      ],
+      "repair_policy": "structured_semantic_repair",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "forbidden_apply_commands",
+        "deploy_command_normalization"
+      ]
+    },
+    {
+      "skill_id": "config.yaml_schema",
+      "trigger_conditions": [
+        ".yaml config",
+        "schema file"
+      ],
+      "required_files": [
+        "config.yaml",
+        "schema.json"
+      ],
+      "repo_heuristics": [
+        "yaml schema validation"
+      ],
+      "verify_matrix": [
+        "yaml_schema_validate"
+      ],
+      "repair_policy": "structured_semantic_repair",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "stack_convention_consistency",
+        "hardcoded_secret_risk"
+      ]
+    },
+    {
+      "skill_id": "data.sql_migration",
+      "trigger_conditions": [
+        "migration sql"
+      ],
+      "required_files": [
+        "migration.sql"
+      ],
+      "repo_heuristics": [
+        "sqlite semantic verify"
+      ],
+      "verify_matrix": [
+        "sql_migration_validate",
+        "query_smoke"
+      ],
+      "repair_policy": "structured_semantic_repair",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "dangerous_command_risk",
+        "diff_size_touched_files_policy"
+      ]
+    },
+    {
+      "skill_id": "backend.kotlin_jvm",
+      "trigger_conditions": [
+        ".kt files",
+        "jvm runtime"
+      ],
+      "required_files": [
+        "src/main/kotlin/Greeting.kt",
+        "src/test/kotlin/GreetingTest.kt"
+      ],
+      "repo_heuristics": [
+        "kotlinc compile + java run"
+      ],
+      "verify_matrix": [
+        "typecheck_or_compile",
+        "unit_or_integration_tests",
+        "startup_smoke"
+      ],
+      "repair_policy": "auto_repair_with_attempt_ceiling",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "stack_convention_consistency",
+        "dependency_policy"
+      ]
+    },
+    {
+      "skill_id": "backend.swift_windows",
+      "trigger_conditions": [
+        ".swift files"
+      ],
+      "required_files": [
+        "Sources/Greeting.swift"
+      ],
+      "repo_heuristics": [
+        "swift windows host boundary"
+      ],
+      "verify_matrix": [
+        "swift_compile_or_boundary_receipt"
+      ],
+      "repair_policy": "bounded_repair_with_host_boundary",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "stack_convention_consistency"
+      ]
+    },
+    {
+      "skill_id": "crossend.flutter_web",
+      "trigger_conditions": [
+        "flutter markers",
+        "lib/main.dart",
+        "web supported or selected"
+      ],
+      "required_files": [
+        "pubspec.yaml",
+        "lib/main.dart"
+      ],
+      "repo_heuristics": [
+        "flutter web host subset"
+      ],
+      "verify_matrix": [
+        "flutter_version",
+        "flutter_doctor",
+        "semantic_verify"
+      ],
+      "repair_policy": "bounded_repair_with_host_boundary",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail",
+        "hardcoded_secret_risk",
+        "stack_convention_consistency"
+      ]
+    },
+    {
+      "skill_id": "crossend.flutter_desktop_host_blocked",
+      "trigger_conditions": [
+        "flutter desktop requested",
+        "host prerequisites missing"
+      ],
+      "required_files": [],
+      "repo_heuristics": [
+        "desktop deferred boundary receipt required"
+      ],
+      "verify_matrix": [
+        "boundary_receipt_only"
+      ],
+      "repair_policy": "deferred_host_boundary",
+      "dependency_policy": "project_local_only",
+      "review_gate_rules": [
+        "path_jail"
+      ]
+    }
+  ],
+  "final_status": "frozen"
+}

@@ -1,0 +1,126 @@
+{
+  "version": "v1.skill-pack-routing.expansion",
+  "routing_policy": {
+    "default_mode": "minimal_required_packs_only",
+    "max_selected_packs_per_task": 3,
+    "load_strategy": "stack_profile_driven",
+    "fallback_to_default_stack_profile_allowed": true
+  },
+  "trigger_to_pack": [
+    {
+      "when": [
+        "framework contains vite",
+        "react marker"
+      ],
+      "select": "frontend.react_vite_ts"
+    },
+    {
+      "when": [
+        "framework contains next"
+      ],
+      "select": "frontend.nextjs"
+    },
+    {
+      "when": [
+        "framework contains vue"
+      ],
+      "select": "frontend.vue_vite"
+    },
+    {
+      "when": [
+        "framework contains express",
+        "runtime node"
+      ],
+      "select": "backend.node_express"
+    },
+    {
+      "when": [
+        "framework contains fastapi",
+        "runtime python"
+      ],
+      "select": "backend.python_fastapi"
+    },
+    {
+      "when": [
+        "runtime go",
+        "framework contains gin or fiber"
+      ],
+      "select": "backend.go_gin"
+    },
+    {
+      "when": [
+        "runtime java",
+        "framework contains spring"
+      ],
+      "select": "backend.java_springboot"
+    },
+    {
+      "when": [
+        "framework contains cloudflare",
+        "app_kind worker"
+      ],
+      "select": "worker.cloudflare"
+    },
+    {
+      "when": [
+        "app_kind fullstack",
+        "vite+fastapi markers"
+      ],
+      "select": "fullstack.vite_fastapi"
+    },
+    {
+      "when": [
+        "app_kind mobile",
+        "react-native markers"
+      ],
+      "select": "crossend.react_native"
+    },
+    {
+      "when": [
+        "runtime rust",
+        "cargo markers"
+      ],
+      "select": "backend.rust_cargo"
+    },
+    {
+      "when": [
+        "terraform files present"
+      ],
+      "select": "infra.terraform_cli"
+    },
+    {
+      "when": [
+        "yaml config + schema markers"
+      ],
+      "select": "config.yaml_schema"
+    },
+    {
+      "when": [
+        "sql migration markers"
+      ],
+      "select": "data.sql_migration"
+    },
+    {
+      "when": [
+        "runtime kotlin",
+        "jvm markers"
+      ],
+      "select": "backend.kotlin_jvm"
+    },
+    {
+      "when": [
+        "runtime swift",
+        "windows host"
+      ],
+      "select": "backend.swift_windows"
+    },
+    {
+      "when": [
+        "framework flutter",
+        "crossend markers"
+      ],
+      "select": "crossend.flutter_web"
+    }
+  ],
+  "final_status": "enabled"
+}

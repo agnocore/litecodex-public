@@ -1,0 +1,20 @@
+{
+  "version": "v1.online-verification",
+  "release_url": "https://<preview-domain>",
+  "node_verification": {
+    "enabled": true,
+    "method": "https_get",
+    "success_status_range": "200-399"
+  },
+  "powershell_verification": {
+    "enabled": true,
+    "method": "Invoke-WebRequest",
+    "success_status_range": "200-399,401,403"
+  },
+  "browser_verification": {
+    "enabled": true,
+    "mode": "readonly_optional"
+  },
+  "success_criteria": "at_least_two_methods_pass",
+  "final_status": "passed | failed_controlled"
+}

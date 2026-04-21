@@ -1,0 +1,17 @@
+{
+  "version": "v1.phase3b",
+  "schema": {
+    "verify_attempt_id": "string",
+    "command": "string",
+    "cwd": "string",
+    "exit_code": "integer|null",
+    "stdout_summary": "string",
+    "stderr_summary": "string",
+    "failure_class": "string|null",
+    "selected_repair_strategy": "string|null",
+    "diff_before": "string",
+    "diff_after": "string",
+    "retry_number": "integer",
+    "final_status": "passed|controlled_failed|failed"
+  }
+}

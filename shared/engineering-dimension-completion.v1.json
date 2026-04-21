@@ -1,0 +1,19 @@
+{
+  "version": "v1.engineering-dimension-completion",
+  "dimensions": [
+    "app_kind",
+    "runtime",
+    "framework",
+    "package_manager",
+    "test_stack",
+    "deploy_target",
+    "data_layer",
+    "auth_model",
+    "repo_topology",
+    "risk_level"
+  ],
+  "auto_fill_confidence": 0.0,
+  "blocking_ambiguities": ["string"],
+  "default_stack_profile_used": false,
+  "final_status": "completed | blocked"
+}

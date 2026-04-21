@@ -1,0 +1,11 @@
+{
+  "name": "litecodex",
+  "version": "1.0.0-community",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:community": "node scripts/build-community.mjs",
+    "build:private": "node scripts/build-private.mjs",
+    "release:community:verify": "node scripts/release-community-verify.mjs"
+  }
+}

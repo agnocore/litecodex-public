@@ -1,0 +1,17 @@
+{
+  "version": "v1.engineering-layer-readiness",
+  "layers": [
+    "task_to_engineering_compiler",
+    "engineering_dimension_completion",
+    "polyglot_skill_packs",
+    "default_verify_pipeline",
+    "review_gate",
+    "repair_loop"
+  ],
+  "readiness_semantics": {
+    "evidence_source": "representative_task_outcomes",
+    "schema_existence_only_is_not_ready": true,
+    "single_unique_blocker_required_when_not_ready": true
+  },
+  "final_status": "enabled"
+}

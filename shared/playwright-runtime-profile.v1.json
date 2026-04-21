@@ -1,0 +1,15 @@
+{
+  "version": "v1.phase5b-closeout",
+  "cli_mode": "fixture_local",
+  "browser_binary_download": "disabled",
+  "browser_channel_policy": ["edge", "chrome"],
+  "workers": 1,
+  "fully_parallel": false,
+  "trace": false,
+  "video": false,
+  "timeout_policy": {
+    "default_action_timeout_ms": 4000,
+    "matrix_total_timeout_ms": 60000
+  },
+  "resource_mode": "lite_8gb"
+}

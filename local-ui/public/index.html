@@ -1,0 +1,1424 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>lite-codex Phase 4C Fork / Lineage</title>
+    <style>
+      body { font-family: Consolas, monospace; margin: 12px; }
+      h1 { margin: 0 0 8px; }
+      .row { margin-bottom: 8px; }
+      .badge { display: inline-block; padding: 2px 6px; border: 1px solid #333; }
+      .banner { border: 1px solid #999; padding: 6px; margin-bottom: 6px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      pre { background: #f4f4f4; padding: 8px; max-height: 220px; overflow: auto; margin: 0; }
+      button { margin-right: 6px; }
+      input, select { width: 260px; }
+      details { border: 1px solid #999; padding: 6px; }
+    </style>
+  </head>
+  <body>
+    <h1>lite-codex v1</h1>
+
+    <div class="row">
+      Runtime Profile: <span id="runtimeProfileBadge" class="badge">loading...</span>
+    </div>
+    <div class="row" id="hostStatus">host: checking...</div>
+    <div class="row" id="activeRunStatus">active run: none</div>
+    <div class="row" id="guardrailStatus">guardrails: loading...</div>
+
+    <div class="banner" id="authPendingBanner">auth pending banner: placeholder (deferred)</div>
+    <div class="banner" id="reconnectBanner">reconnect banner: placeholder (idle)</div>
+    <div class="banner" id="compactBanner">compact banner: deterministic compact idle</div>
+
+    <div class="row">
+      <label for="authModeSelect">Auth Mode: </label>
+      <select id="authModeSelect">
+        <option value="browser_oauth">browser_oauth</option>
+        <option value="cli_login">cli_login</option>
+        <option value="token_input">token_input</option>
+        <option value="device_code">device_code</option>
+      </select>
+      <label for="capabilityInput">Capability: </label>
+      <input id="capabilityInput" type="text" value="local.verify.run" />
+      <label for="forceAuthChallenge">force auth challenge</label>
+      <input id="forceAuthChallenge" type="checkbox" />
+      <button id="createRunBtn">Create Auth Run</button>
+      <button id="reloadRunsBtn">Reload Runs</button>
+    </div>
+
+    <div class="row">
+      <label for="phase3eCaseSelect">Phase3E Case: </label>
+      <select id="phase3eCaseSelect">
+        <option value="case1_install_verify_pass_snapshot_retained">case1_install_verify_pass_snapshot_retained</option>
+        <option value="case2_install_verify_failed_auto_rollback">case2_install_verify_failed_auto_rollback</option>
+        <option value="case3_command_replay_adjusted_pass">case3_command_replay_adjusted_pass</option>
+        <option value="case4_dependency_replay_policy_rejected">case4_dependency_replay_policy_rejected</option>
+      </select>
+      <button id="createPhase3eRunBtn">Create Phase3E Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase3fCaseSelect">Phase3F Case: </label>
+      <select id="phase3fCaseSelect">
+        <option value="case1_project_inspect_tools_found">case1_project_inspect_tools_found</option>
+        <option value="case2_missing_tool_fixture_local_install">case2_missing_tool_fixture_local_install</option>
+        <option value="case3_missing_tool_forbidden_global_install">case3_missing_tool_forbidden_global_install</option>
+        <option value="case4_supabase_cli_discovery">case4_supabase_cli_discovery</option>
+        <option value="case5_untrusted_workspace_install_blocked">case5_untrusted_workspace_install_blocked</option>
+      </select>
+      <button id="createPhase3fRunBtn">Create Phase3F Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase3gCaseSelect">Phase3G Case: </label>
+      <select id="phase3gCaseSelect">
+        <option value="case1_tool_install_verify_failed_rollback">case1_tool_install_verify_failed_rollback</option>
+        <option value="case2_tool_install_verify_passed">case2_tool_install_verify_passed</option>
+        <option value="case3_phase3_smoke_suite">case3_phase3_smoke_suite</option>
+        <option value="case4_contract_schema_event_consistency">case4_contract_schema_event_consistency</option>
+        <option value="case5_phase4_readiness_gate">case5_phase4_readiness_gate</option>
+      </select>
+      <button id="createPhase3gRunBtn">Create Phase3G Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase4aCaseSelect">Phase4A Case: </label>
+      <select id="phase4aCaseSelect">
+        <option value="case1_completed_run_hydration">case1_completed_run_hydration</option>
+        <option value="case2_failed_controlled_run_hydration">case2_failed_controlled_run_hydration</option>
+        <option value="case3_sse_reconnect_missed_events">case3_sse_reconnect_missed_events</option>
+        <option value="case4_active_run_resume">case4_active_run_resume</option>
+        <option value="case5_phase4_baseline_binding">case5_phase4_baseline_binding</option>
+      </select>
+      <button id="createPhase4aRunBtn">Create Phase4A Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase4bCaseSelect">Phase4B Case: </label>
+      <select id="phase4bCaseSelect">
+        <option value="case1_manual_compact_completed_run">case1_manual_compact_completed_run</option>
+        <option value="case2_auto_compact_event_threshold">case2_auto_compact_event_threshold</option>
+        <option value="case3_compact_reconnect_missed_events">case3_compact_reconnect_missed_events</option>
+        <option value="case4_compact_active_run_resume">case4_compact_active_run_resume</option>
+        <option value="case5_stale_running_seed">case5_stale_running_seed</option>
+        <option value="case6_corrupt_compact_artifact_seed">case6_corrupt_compact_artifact_seed</option>
+      </select>
+      <button id="createPhase4bRunBtn">Create Phase4B Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase4cSourceCaseSelect">Phase4C Source Case: </label>
+      <select id="phase4cSourceCaseSelect">
+        <option value="source_completed">source_completed</option>
+        <option value="source_failed_controlled">source_failed_controlled</option>
+        <option value="source_compacted_seed">source_compacted_seed</option>
+      </select>
+      <button id="createPhase4cSourceRunBtn">Create Phase4C Source Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase5aCaseSelect">Phase5A Case: </label>
+      <select id="phase5aCaseSelect">
+        <option value="case1_browser_discovery_local_smoke_passed">case1_browser_discovery_local_smoke_passed</option>
+        <option value="case2_browser_tool_missing_install_required_or_rejected">case2_browser_tool_missing_install_required_or_rejected</option>
+        <option value="case3_deploy_adapter_readonly_preflight">case3_deploy_adapter_readonly_preflight</option>
+        <option value="case4_production_like_deploy_action_blocked">case4_production_like_deploy_action_blocked</option>
+        <option value="case5_phase5a_readiness_gate">case5_phase5a_readiness_gate</option>
+      </select>
+      <button id="createPhase5aRunBtn">Create Phase5A Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase5bCaseSelect">Phase5B Case: </label>
+      <select id="phase5bCaseSelect">
+        <option value="case1_playwright_cli_availability_resolved">case1_playwright_cli_availability_resolved</option>
+        <option value="case2_browser_action_matrix_local_passed">case2_browser_action_matrix_local_passed</option>
+        <option value="case3_browser_blocked_action_rejected">case3_browser_blocked_action_rejected</option>
+        <option value="case4_post_auth_verification_gate_readonly_passed">case4_post_auth_verification_gate_readonly_passed</option>
+        <option value="case5_phase5b_readiness_gate">case5_phase5b_readiness_gate</option>
+      </select>
+      <button id="createPhase5bRunBtn">Create Phase5B Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase5cCaseSelect">Phase5C Case: </label>
+      <select id="phase5cCaseSelect">
+        <option value="case1_cloudflare_readonly_external_verification_allowed">case1_cloudflare_readonly_external_verification_allowed</option>
+        <option value="case2_vercel_readonly_external_verification_allowed">case2_vercel_readonly_external_verification_allowed</option>
+        <option value="case3_supabase_readonly_external_verification_allowed">case3_supabase_readonly_external_verification_allowed</option>
+        <option value="case4_forbidden_external_or_destructive_path_rejected">case4_forbidden_external_or_destructive_path_rejected</option>
+        <option value="case5_phase5c_readiness_gate">case5_phase5c_readiness_gate</option>
+      </select>
+      <button id="createPhase5cRunBtn">Create Phase5C Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase5dCaseSelect">Phase5D Case: </label>
+      <select id="phase5dCaseSelect">
+        <option value="case1_escalate_pending_approve_same_run_continue_completed">case1_escalate_pending_approve_same_run_continue_completed</option>
+        <option value="case2_escalate_pending_reject_failed_controlled">case2_escalate_pending_reject_failed_controlled</option>
+        <option value="case3_pending_survives_host_restart_reconnect">case3_pending_survives_host_restart_reconnect</option>
+        <option value="case4_approval_expired_or_cancelled">case4_approval_expired_or_cancelled</option>
+        <option value="case5_phase5d_readiness_gate">case5_phase5d_readiness_gate</option>
+      </select>
+      <button id="createPhase5dRunBtn">Create Phase5D Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase6aCaseSelect">Phase6A Case: </label>
+      <select id="phase6aCaseSelect">
+        <option value="case1_e2b_discovery_ready">case1_e2b_discovery_ready</option>
+        <option value="case2_routing_local_only_task_stays_local">case2_routing_local_only_task_stays_local</option>
+        <option value="case3_routing_e2b_candidate_task_goes_to_e2b">case3_routing_e2b_candidate_task_goes_to_e2b</option>
+        <option value="case4_e2b_execution_result_written_back_to_local_ledger">case4_e2b_execution_result_written_back_to_local_ledger</option>
+        <option value="case5_phase6a_readiness_gate">case5_phase6a_readiness_gate</option>
+      </select>
+      <button id="createPhase6aRunBtn">Create Phase6A Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase6bCaseSelect">Phase6B Case: </label>
+      <select id="phase6bCaseSelect">
+        <option value="case1_local_only_verify_task_stays_local">case1_local_only_verify_task_stays_local</option>
+        <option value="case2_e2b_isolated_verify_task_completed">case2_e2b_isolated_verify_task_completed</option>
+        <option value="case3_e2b_isolated_patch_file_task_completed">case3_e2b_isolated_patch_file_task_completed</option>
+        <option value="case4_e2b_transient_failure_local_fallback_same_run_continue">case4_e2b_transient_failure_local_fallback_same_run_continue</option>
+        <option value="case5_e2b_non_fallback_task_failed_controlled">case5_e2b_non_fallback_task_failed_controlled</option>
+        <option value="case6_phase6b_readiness_gate">case6_phase6b_readiness_gate</option>
+      </select>
+      <button id="createPhase6bRunBtn">Create Phase6B Run</button>
+    </div>
+
+    <div class="row">
+      <label for="phase6cCaseSelect">Phase6C Case: </label>
+      <select id="phase6cCaseSelect">
+        <option value="case1_clean_writeback_apply">case1_clean_writeback_apply</option>
+        <option value="case2_local_conflict_writeback_rejected">case2_local_conflict_writeback_rejected</option>
+        <option value="case3_forbidden_path_writeback_rejected">case3_forbidden_path_writeback_rejected</option>
+        <option value="case4_writeback_receipt_ledger_binding">case4_writeback_receipt_ledger_binding</option>
+        <option value="case5_phase6c_readiness_gate">case5_phase6c_readiness_gate</option>
+      </select>
+      <button id="createPhase6cRunBtn">Create Phase6C Run</button>
+    </div>
+
+    <div class="row">
+      <label for="workspaceDeployCaseSelect">Workspace+Deploy Case: </label>
+      <select id="workspaceDeployCaseSelect">
+        <option value="case1_workspace_root_binding_task_storage_root_created">case1_workspace_root_binding_task_storage_root_created</option>
+        <option value="case2_path_jail_reject_outside_root_or_forbidden_path">case2_path_jail_reject_outside_root_or_forbidden_path</option>
+        <option value="case3_local_code_fix_verify_inside_selected_root">case3_local_code_fix_verify_inside_selected_root</option>
+        <option value="case4_real_deploy_closeout">case4_real_deploy_closeout</option>
+        <option value="case5_deploy_failure_auto_fix_retry_or_exact_controlled_fail">case5_deploy_failure_auto_fix_retry_or_exact_controlled_fail</option>
+        <option value="case6_online_verification_closeout">case6_online_verification_closeout</option>
+        <option value="case7_final_operational_readiness">case7_final_operational_readiness</option>
+      </select>
+      <button id="createWorkspaceDeployRunBtn">Create Workspace+Deploy Run</button>
+    </div>
+
+    <div class="row">
+      <label for="pendingApprovalSelect">Pending approvals: </label>
+      <select id="pendingApprovalSelect"></select>
+      <button id="refreshPendingApprovalsBtn">Refresh Pending</button>
+      <button id="approvePendingBtn">Approve Selected</button>
+      <button id="rejectPendingBtn">Reject Selected</button>
+    </div>
+
+    <div class="row">
+      <label for="phase4aRunIdInput">Run ID: </label>
+      <input id="phase4aRunIdInput" type="text" placeholder="run_xxx" />
+      <label for="sinceSeqInput">since_seq: </label>
+      <input id="sinceSeqInput" type="number" value="0" />
+      <label for="clientIdInput">client_id: </label>
+      <input id="clientIdInput" type="text" value="ui-client" />
+      <button id="hydrateRunBtn">Hydrate Run</button>
+      <button id="hydrateCompactRunBtn">Hydrate use_compact=true</button>
+      <button id="reconnectRunBtn">Reconnect Run</button>
+      <button id="resumeRunBtn">Resume Run</button>
+      <button id="compactRunBtn">Manual Compact</button>
+      <button id="loadCompactBtn">Load Compact</button>
+      <button id="loadProjectionBtn">Load Projection</button>
+      <button id="staleRecoverBtn">Run Stale Recovery</button>
+    </div>
+
+    <div class="row">
+      <label for="baselineRunIdInput">baseline_run_id: </label>
+      <input id="baselineRunIdInput" type="text" placeholder="run_xxx" />
+      <label for="smokeRunIdInput">smoke_run_id: </label>
+      <input id="smokeRunIdInput" type="text" placeholder="run_xxx" />
+      <label for="consistencyRunIdInput">consistency_run_id: </label>
+      <input id="consistencyRunIdInput" type="text" placeholder="run_xxx" />
+      <label for="readinessRunIdInput">readiness_run_id: </label>
+      <input id="readinessRunIdInput" type="text" placeholder="run_xxx" />
+      <label for="evidenceRootInput">evidence_root: </label>
+      <input id="evidenceRootInput" type="text" value="evidence/phase3g-execution-closeout" />
+      <button id="bindBaselineBtn">Bind Baseline</button>
+    </div>
+
+    <div class="row">
+      <label for="forkReasonInput">fork_reason: </label>
+      <input id="forkReasonInput" type="text" value="phase4c_manual_fork" />
+      <label for="forkModeSelect">fork_mode: </label>
+      <select id="forkModeSelect">
+        <option value="hydrate_only">hydrate_only</option>
+        <option value="repair_then_complete">repair_then_complete</option>
+        <option value="resumable_active">resumable_active</option>
+        <option value="event_burst_complete">event_burst_complete</option>
+      </select>
+      <button id="createForkBtn">Fork Source Run</button>
+      <button id="loadLineageBtn">Load Lineage</button>
+      <button id="loadForksBtn">Load Forks</button>
+    </div>
+
+    <div class="row">
+      <label for="forkTargetWorkspaceInput">fork target workspace: </label>
+      <input id="forkTargetWorkspaceInput" type="text" placeholder="optional; let host policy decide when blank" />
+      <label for="forkAutoRedirectInput">auto_redirect</label>
+      <input id="forkAutoRedirectInput" type="checkbox" checked />
+    </div>
+
+    <div class="row">
+      <label for="phase4CloseoutRunIdInput">closeout run_id: </label>
+      <input id="phase4CloseoutRunIdInput" type="text" placeholder="optional; host creates one when empty" />
+      <label for="phase4ModuleRunIdsInput">module_run_ids JSON: </label>
+      <input
+        id="phase4ModuleRunIdsInput"
+        type="text"
+        value='{}'
+      />
+      <label for="phase4ProjectionRunIdsInput">projection_run_ids(csv): </label>
+      <input id="phase4ProjectionRunIdsInput" type="text" placeholder="run_a,run_b" />
+      <button id="runPhase4CloseoutBtn">Run Phase4 Closeout</button>
+    </div>
+
+    <div class="row">
+      <label for="phase5ReadinessRunIdInput">readiness run_id: </label>
+      <input id="phase5ReadinessRunIdInput" type="text" placeholder="optional; host creates one when empty" />
+      <label for="phase5CloseoutRunIdInput">closeout_run_id: </label>
+      <input id="phase5CloseoutRunIdInput" type="text" placeholder="required for gate" />
+      <label for="phase5ProjectionRunIdsInput">projection_run_ids(csv): </label>
+      <input id="phase5ProjectionRunIdsInput" type="text" placeholder="run_a,run_b" />
+      <button id="runPhase5ReadinessBtn">Run Phase5 Readiness</button>
+    </div>
+
+    <div class="row">
+      <label for="byoKey">BYO API Key (memory-only): </label>
+      <input id="byoKey" type="password" placeholder="sk-..." />
+      <button id="saveKeyBtn">Save</button>
+      <button id="clearKeyBtn">Clear</button>
+      <span id="keyState"></span>
+    </div>
+
+    <div class="row">
+      <label for="byoProfileId">browser profile id:</label>
+      <input id="byoProfileId" type="text" readonly />
+      <label for="byoScopeSelect">binding scope:</label>
+      <select id="byoScopeSelect">
+        <option value="browser_profile_scope">browser_profile_scope</option>
+        <option value="machine_scope">machine_scope</option>
+        <option value="session_scope">session_scope</option>
+      </select>
+      <button id="bindByoBtn">Bind</button>
+      <button id="validateByoBtn">Validate</button>
+      <button id="revalidateByoBtn">Revalidate</button>
+      <button id="unbindByoBtn">Unbind</button>
+      <button id="deleteByoBtn">Delete Binding</button>
+      <button id="freezeRetrievalDesignBtn">Freeze Exa/Firecrawl Design</button>
+    </div>
+
+    <div class="row">
+      <label for="byoExactCaseSelect">BYO+Retrieval Case:</label>
+      <select id="byoExactCaseSelect">
+        <option value="case1_openai_byo_bind_exact_validation_success">case1_openai_byo_bind_exact_validation_success</option>
+        <option value="case2_openai_invalid_input_explicit_classification">case2_openai_invalid_input_explicit_classification</option>
+        <option value="case3_unbind_delete_old_binding_unusable">case3_unbind_delete_old_binding_unusable</option>
+        <option value="case4_browser_profile_isolation_proof">case4_browser_profile_isolation_proof</option>
+        <option value="case5_retrieval_no_search_local_task">case5_retrieval_no_search_local_task</option>
+        <option value="case6_retrieval_tavily_minimal_search">case6_retrieval_tavily_minimal_search</option>
+        <option value="case7_retrieval_exa_firecrawl_design_frozen_disabled">case7_retrieval_exa_firecrawl_design_frozen_disabled</option>
+      </select>
+      <button id="createByoExactRunBtn">Create BYO Exact Run</button>
+    </div>
+    <div class="row">
+      <label for="retrievalMultiCaseSelect">Retrieval Multi-Provider Case:</label>
+      <select id="retrievalMultiCaseSelect">
+        <option value="case1_local_task_no_search">case1_local_task_no_search</option>
+        <option value="case2_tavily_first_hop">case2_tavily_first_hop</option>
+        <option value="case3_exa_second_hop_precise">case3_exa_second_hop_precise</option>
+        <option value="case4_firecrawl_scrape_url">case4_firecrawl_scrape_url</option>
+        <option value="case5_firecrawl_extract_structured">case5_firecrawl_extract_structured</option>
+        <option value="case6_provider_health_fail_fallback">case6_provider_health_fail_fallback</option>
+        <option value="case7_retrieval_multi_provider_readiness">case7_retrieval_multi_provider_readiness</option>
+      </select>
+      <button id="createRetrievalMultiRunBtn">Create Retrieval Multi Run</button>
+    </div>
+    <div class="row">
+      <label for="retrievalGovernanceCaseSelect">Retrieval Governance Case:</label>
+      <select id="retrievalGovernanceCaseSelect">
+        <option value="case1_local_task_no_search">case1_local_task_no_search</option>
+        <option value="case2_tavily_freshness_task">case2_tavily_freshness_task</option>
+        <option value="case3_exa_precision_second_hop">case3_exa_precision_second_hop</option>
+        <option value="case4_firecrawl_scrape_extract">case4_firecrawl_scrape_extract</option>
+        <option value="case5_duplicate_conflict_arbitration">case5_duplicate_conflict_arbitration</option>
+        <option value="case6_provider_degraded_fallback">case6_provider_degraded_fallback</option>
+        <option value="case7_retrieval_governance_readiness">case7_retrieval_governance_readiness</option>
+      </select>
+      <button id="createRetrievalGovernanceRunBtn">Create Retrieval Governance Run</button>
+    </div>
+    <div class="row">
+      <label for="systemAcceptanceStorySelect">System Acceptance Story:</label>
+      <select id="systemAcceptanceStorySelect">
+        <option value="global_system_acceptance_chain_v1">global_system_acceptance_chain_v1</option>
+      </select>
+      <button id="createSystemAcceptanceRunBtn">Create System Acceptance Run</button>
+    </div>
+    <div class="row">
+      <label for="engineeringStorySelect">Engineering Story:</label>
+      <select id="engineeringStorySelect">
+        <option value="polyglot_engineering_chain_v1">polyglot_engineering_chain_v1</option>
+        <option value="polyglot_engineering_productionization_v1">polyglot_engineering_productionization_v1</option>
+        <option value="polyglot_multi_host_productionization_closeout_v1">polyglot_multi_host_productionization_closeout_v1</option>
+        <option value="external_runner_execution_plane_closeout_v1">external_runner_execution_plane_closeout_v1</option>
+        <option value="android_prerequisite_fulfillment_closeout_v1">android_prerequisite_fulfillment_closeout_v1</option>
+      </select>
+      <button id="createTaskEngineeringRunBtn">Create Task->Engineering Run</button>
+    </div>
+    <div class="row">
+      <label for="transportCaseSelect">OpenAI Transport Case:</label>
+      <select id="transportCaseSelect">
+        <option value="case1_openai_codegen_transport_closeout">case1_openai_codegen_transport_closeout</option>
+      </select>
+      <button id="createOpenAiTransportRunBtn">Create OpenAI Transport Run</button>
+    </div>
+
+    <div class="grid">
+      <section>
+        <h2>BYO Status</h2>
+        <pre id="byoBindingStatusPanel">loading...</pre>
+      </section>
+      <section>
+        <h2>BYO Validation</h2>
+        <pre id="byoValidationStatusPanel">loading...</pre>
+      </section>
+    </div>
+    <div class="grid">
+      <section>
+        <h2>BYO Scope / Last Verified</h2>
+        <pre id="byoScopeVerifiedPanel">loading...</pre>
+      </section>
+      <section>
+        <h2>Challenge / Profile Proof</h2>
+        <pre id="byoChallengePanel">idle</pre>
+      </section>
+    </div>
+    <div class="grid">
+      <section>
+        <h2>Retrieval Status</h2>
+        <pre id="retrievalStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Retrieval Decision / Provider</h2>
+        <pre id="retrievalDecisionPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Retrieval Hits / Bundle</h2>
+        <pre id="retrievalHitsPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Exa/Firecrawl Frozen-Disabled</h2>
+        <pre id="retrievalDesignFrozenPanel">idle</pre>
+      </section>
+    </div>
+    <div class="grid">
+      <section>
+        <h2>Retrieval Provider Chain</h2>
+        <pre id="retrievalProviderChainPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Retrieval Fetch Targets</h2>
+        <pre id="retrievalFetchTargetsPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Retrieval Provider Health</h2>
+        <pre id="retrievalHealthPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Retrieval Readiness</h2>
+        <pre id="retrievalReadinessPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Retrieval Blocked Modules</h2>
+        <pre id="retrievalBlockedPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Firecrawl Crawl Disabled</h2>
+        <pre id="retrievalCrawlDisabledPanel">true</pre>
+      </section>
+      <section>
+        <h2>Citation Gate</h2>
+        <pre id="retrievalCitationGatePanel">idle</pre>
+      </section>
+      <section>
+        <h2>Conflict Resolution</h2>
+        <pre id="retrievalConflictPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Budget / Degraded Mode</h2>
+        <pre id="retrievalBudgetPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Bundle Final Status</h2>
+        <pre id="retrievalBundleStatusPanel">idle</pre>
+      </section>
+    </div>
+    <div class="grid">
+      <section>
+        <h2>Acceptance Chain Status</h2>
+        <pre id="acceptanceChainStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Acceptance Checkpoint Summary</h2>
+        <pre id="acceptanceCheckpointSummaryPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Acceptance Exercised Modules</h2>
+        <pre id="acceptanceExercisedModulesPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Acceptance Non-blocking Issues</h2>
+        <pre id="acceptanceNonBlockingPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Acceptance Deferred Items</h2>
+        <pre id="acceptanceDeferredPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Acceptance Final Readiness</h2>
+        <pre id="acceptanceFinalReadinessPanel">idle</pre>
+      </section>
+    </div>
+    <div class="grid">
+      <section>
+        <h2>Engineering Intent</h2>
+        <pre id="engineeringIntentPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Stack Profile</h2>
+        <pre id="engineeringStackProfilePanel">idle</pre>
+      </section>
+      <section>
+        <h2>Selected Skills</h2>
+        <pre id="engineeringSkillsPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Verify Plan</h2>
+        <pre id="engineeringVerifyPlanPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Review Gate</h2>
+        <pre id="engineeringReviewGatePanel">idle</pre>
+      </section>
+      <section>
+        <h2>Repair Attempts</h2>
+        <pre id="engineeringRepairPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Task Final Status</h2>
+        <pre id="engineeringTaskStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Engineering Readiness</h2>
+        <pre id="engineeringReadinessPanel">idle</pre>
+      </section>
+    </div>
+    <div class="grid">
+      <section>
+        <h2>OpenAI Route Binding</h2>
+        <pre id="openaiTransportRoutePanel">idle</pre>
+      </section>
+      <section>
+        <h2>OpenAI Transport Probes</h2>
+        <pre id="openaiTransportProbePanel">idle</pre>
+      </section>
+      <section>
+        <h2>OpenAI Transport Final</h2>
+        <pre id="openaiTransportFinalPanel">idle</pre>
+      </section>
+    </div>
+    <div class="grid">
+      <section>
+        <h2>Runner Registry Status</h2>
+        <pre id="externalRunnerRegistryStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Runner Job Status</h2>
+        <pre id="externalRunnerJobStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Artifact Sync Status</h2>
+        <pre id="externalRunnerArtifactSyncStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Android Lane Status</h2>
+        <pre id="externalAndroidLaneStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Android SDK Status</h2>
+        <pre id="androidSdkStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Android Fulfillment Status</h2>
+        <pre id="androidFulfillmentStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Android Build/Verify Status</h2>
+        <pre id="androidBuildVerifyStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Flutter Android Status</h2>
+        <pre id="flutterAndroidStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Apple / Store Boundary Status</h2>
+        <pre id="externalAppleStoreBoundaryStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>External Expansion Readiness</h2>
+        <pre id="externalExpansionReadinessPanel">idle</pre>
+      </section>
+    </div>
+
+    <div class="row">
+      <button id="cancelAuthBtn">Cancel Active Auth Session</button>
+      <button id="revokeGrantBtn">Revoke Latest Grant</button>
+    </div>
+
+    <div class="grid">
+      <section>
+        <h2>Current Action</h2>
+        <pre id="currentActionLine">idle</pre>
+      </section>
+      <section>
+        <h2>Step Timeline</h2>
+        <pre id="timelinePanel">[]</pre>
+      </section>
+      <section>
+        <h2>Runs <span id="runListMeta"></span></h2>
+        <pre id="runsPanel">[]</pre>
+      </section>
+      <section>
+        <h2>Event Stream <span id="eventMeta"></span></h2>
+        <pre id="eventsPanel">[]</pre>
+      </section>
+      <section>
+        <h2>Recipe / Verifier</h2>
+        <pre id="recipeVerifierPanel">none</pre>
+      </section>
+      <section>
+        <h2>Adapter State</h2>
+        <pre id="adapterStatePanel">none</pre>
+      </section>
+      <section>
+        <h2>Project Inspect Summary</h2>
+        <pre id="projectInspectSummaryPanel">none</pre>
+      </section>
+      <section>
+        <h2>Workspace Trust Status</h2>
+        <pre id="workspaceTrustStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Detected Tools</h2>
+        <pre id="detectedToolsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Tool Discovery Status</h2>
+        <pre id="toolDiscoveryStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Missing Tool</h2>
+        <pre id="missingToolPanel">none</pre>
+      </section>
+      <section>
+        <h2>Adapter Install Required</h2>
+        <pre id="adapterInstallRequiredPanel">none</pre>
+      </section>
+      <section>
+        <h2>Tool Install Proposal</h2>
+        <pre id="toolInstallProposalPanel">none</pre>
+      </section>
+      <section>
+        <h2>Tool Install Policy</h2>
+        <pre id="toolInstallPolicyPanel">none</pre>
+      </section>
+      <section>
+        <h2>Tool Install Run</h2>
+        <pre id="toolInstallRunPanel">none</pre>
+      </section>
+      <section>
+        <h2>Tool Install Rollback Snapshot</h2>
+        <pre id="toolInstallRollbackSnapshotPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase3 Closeout Status</h2>
+        <pre id="phase3CloseoutStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Tool Install Rollback Status</h2>
+        <pre id="toolInstallRollbackStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Hash Verification Status</h2>
+        <pre id="hashVerificationStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Git Status Verification</h2>
+        <pre id="gitVerificationStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Smoke Suite Case List</h2>
+        <pre id="smokeSuiteCaseListPanel">none</pre>
+      </section>
+      <section>
+        <h2>Smoke Suite Pass/Fail</h2>
+        <pre id="smokeSuiteResultPanel">none</pre>
+      </section>
+      <section>
+        <h2>Consistency Check Result</h2>
+        <pre id="consistencyCheckResultPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase4 Readiness Status</h2>
+        <pre id="phase4ReadinessStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Readiness Blocked Reasons</h2>
+        <pre id="readinessBlockedReasonsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Hydration Status</h2>
+        <pre id="hydrationStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Hydrate Mode</h2>
+        <pre id="hydrateModePanel">none</pre>
+      </section>
+      <section>
+        <h2>Delta From Seq</h2>
+        <pre id="deltaFromSeqPanel">none</pre>
+      </section>
+      <section>
+        <h2>Loaded Events Count</h2>
+        <pre id="loadedEventsCountPanel">none</pre>
+      </section>
+      <section>
+        <h2>Loaded Ledger Tables</h2>
+        <pre id="loadedTablesPanel">none</pre>
+      </section>
+      <section>
+        <h2>Reconnect Status</h2>
+        <pre id="reconnectStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Cursor Status</h2>
+        <pre id="cursorStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Missed Events Replay</h2>
+        <pre id="missedEventsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Resume Status</h2>
+        <pre id="resumeStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Resumable Reason</h2>
+        <pre id="resumableReasonPanel">none</pre>
+      </section>
+      <section>
+        <h2>Baseline Binding Status</h2>
+        <pre id="baselineBindingStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Baseline Binding Run IDs</h2>
+        <pre id="baselineBindingIdsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Final Projection Status</h2>
+        <pre id="finalProjectionStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Compact Status</h2>
+        <pre id="compactStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Compact Trigger Type</h2>
+        <pre id="compactTriggerTypePanel">none</pre>
+      </section>
+      <section>
+        <h2>Compact Source Event Range</h2>
+        <pre id="compactSourceRangePanel">none</pre>
+      </section>
+      <section>
+        <h2>Compact Artifact Path</h2>
+        <pre id="compactArtifactPathPanel">none</pre>
+      </section>
+      <section>
+        <h2>Compact Integrity Hash</h2>
+        <pre id="compactIntegrityHashPanel">none</pre>
+      </section>
+      <section>
+        <h2>Compact Fallback Reason</h2>
+        <pre id="compactFallbackReasonPanel">none</pre>
+      </section>
+      <section>
+        <h2>Stale Running Recovery Status</h2>
+        <pre id="staleRecoveryStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Fork Status</h2>
+        <pre id="forkStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Fork Policy Status</h2>
+        <pre id="forkPolicyStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Ancestry Relation</h2>
+        <pre id="ancestryRelationPanel">none</pre>
+      </section>
+      <section>
+        <h2>Policy Action</h2>
+        <pre id="policyActionForkPanel">none</pre>
+      </section>
+      <section>
+        <h2>Redirected Target</h2>
+        <pre id="redirectedTargetPanel">none</pre>
+      </section>
+      <section>
+        <h2>Fork Source Run</h2>
+        <pre id="sourceRunIdPanel">none</pre>
+      </section>
+      <section>
+        <h2>Fork Run ID</h2>
+        <pre id="forkRunIdPanel">none</pre>
+      </section>
+      <section>
+        <h2>Fork Baseline Run</h2>
+        <pre id="forkBaselinePanel">none</pre>
+      </section>
+      <section>
+        <h2>Lineage Type</h2>
+        <pre id="lineageTypePanel">none</pre>
+      </section>
+      <section>
+        <h2>Fork Workspace Path</h2>
+        <pre id="forkWorkspacePanel">none</pre>
+      </section>
+      <section>
+        <h2>Artifact Mapping Status</h2>
+        <pre id="artifactMappingStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Source Status</h2>
+        <pre id="sourceStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Fork Run Status</h2>
+        <pre id="forkRunStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Parent / Children Lineage</h2>
+        <pre id="lineageListPanel">none</pre>
+      </section>
+      <section>
+        <h2>Fork Hydrate/Resume/Compact</h2>
+        <pre id="forkLifecyclePanel">none</pre>
+      </section>
+      <section>
+        <h2>Context Projection Status</h2>
+        <pre id="contextProjectionStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Projection Integrity</h2>
+        <pre id="projectionIntegrityPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase4 Closeout Status</h2>
+        <pre id="phase4CloseoutStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5 Readiness Status</h2>
+        <pre id="phase5ReadinessStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5 Allowed Inputs</h2>
+        <pre id="phase5AllowedInputsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5 Forbidden Actions</h2>
+        <pre id="phase5ForbiddenActionsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Browser Discovery Status</h2>
+        <pre id="browserDiscoveryStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Local Browser Path/Status</h2>
+        <pre id="localBrowserPathPanel">none</pre>
+      </section>
+      <section>
+        <h2>Browser Policy Status</h2>
+        <pre id="browserPolicyStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Browser Smoke Status</h2>
+        <pre id="browserSmokeStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Deploy Adapter Discovery</h2>
+        <pre id="deployAdapterDiscoveryStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Deploy Adapter Auth/Readonly</h2>
+        <pre id="deployAdapterReadonlyStatePanel">none</pre>
+      </section>
+      <section>
+        <h2>Deploy Policy Status</h2>
+        <pre id="deployPolicyStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Rejected Action Reason</h2>
+        <pre id="deployRejectedReasonPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5A Readiness</h2>
+        <pre id="phase5aReadinessPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5B Readiness</h2>
+        <pre id="phase5bReadinessPanel">none</pre>
+      </section>
+      <section>
+        <h2>Playwright Discovery Status</h2>
+        <pre id="playwrightDiscoveryStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Playwright CLI Path/Status</h2>
+        <pre id="playwrightCliStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Playwright Browser Binary Status</h2>
+        <pre id="playwrightBrowserBinaryStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Playwright Install Required / Blocked</h2>
+        <pre id="playwrightInstallRequiredPanel">none</pre>
+      </section>
+      <section>
+        <h2>Playwright Install Status</h2>
+        <pre id="playwrightInstallStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Playwright Runtime Profile</h2>
+        <pre id="playwrightRuntimeProfilePanel">none</pre>
+      </section>
+      <section>
+        <h2>Browser Channel Used</h2>
+        <pre id="playwrightChannelPanel">none</pre>
+      </section>
+      <section>
+        <h2>Browser Action Matrix Status</h2>
+        <pre id="browserMatrixStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Browser Matrix Rerun Scope</h2>
+        <pre id="browserMatrixRerunScopePanel">none</pre>
+      </section>
+      <section>
+        <h2>Browser Matrix Rerun Case Status</h2>
+        <pre id="browserMatrixRerunCasePanel">none</pre>
+      </section>
+      <section>
+        <h2>Browser Matrix Current Action</h2>
+        <pre id="browserMatrixCurrentActionPanel">none</pre>
+      </section>
+      <section>
+        <h2>Browser Matrix Blocked Reason</h2>
+        <pre id="browserMatrixBlockedReasonPanel">none</pre>
+      </section>
+      <section>
+        <h2>Browser Verification Gate Status</h2>
+        <pre id="browserVerificationGatePanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5A Blocked Reasons</h2>
+        <pre id="phase5aBlockedReasonsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5A Allowed Inputs</h2>
+        <pre id="phase5aAllowedInputsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5A Forbidden Actions</h2>
+        <pre id="phase5aForbiddenActionsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5B Blocked Reasons</h2>
+        <pre id="phase5bBlockedReasonsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5B Previous Blocker</h2>
+        <pre id="phase5bPreviousBlockerPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5B Blocker Resolved</h2>
+        <pre id="phase5bBlockerResolvedPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5B New Blocked Modules</h2>
+        <pre id="phase5bNewBlockedPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5B Allowed Inputs</h2>
+        <pre id="phase5bAllowedInputsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5B Forbidden Actions</h2>
+        <pre id="phase5bForbiddenActionsPanel">none</pre>
+      </section>
+      <section>
+        <h2>External Provider</h2>
+        <pre id="externalProviderPanel">none</pre>
+      </section>
+      <section>
+        <h2>External Target URL (sanitized)</h2>
+        <pre id="externalTargetPanel">none</pre>
+      </section>
+      <section>
+        <h2>External Allowlist Status</h2>
+        <pre id="externalAllowlistPanel">none</pre>
+      </section>
+      <section>
+        <h2>Approval Escalation Result</h2>
+        <pre id="approvalEscalationPanel">none</pre>
+      </section>
+      <section>
+        <h2>External Verification Status</h2>
+        <pre id="externalVerificationPanel">none</pre>
+      </section>
+      <section>
+        <h2>Selector/Text Verification Summary</h2>
+        <pre id="externalSelectorTextPanel">none</pre>
+      </section>
+      <section>
+        <h2>Screenshot Receipt</h2>
+        <pre id="externalScreenshotPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5C Readiness</h2>
+        <pre id="phase5cReadinessPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5C Blocked Reasons</h2>
+        <pre id="phase5cBlockedPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5C Allowed External Targets</h2>
+        <pre id="phase5cAllowedTargetsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5C Forbidden Actions</h2>
+        <pre id="phase5cForbiddenActionsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Pending Approval List</h2>
+        <pre id="approvalPendingListPanel">none</pre>
+      </section>
+      <section>
+        <h2>Pending Detail</h2>
+        <pre id="approvalPendingDetailPanel">none</pre>
+      </section>
+      <section>
+        <h2>Approval Decision Status</h2>
+        <pre id="approvalDecisionStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Continuation Status</h2>
+        <pre id="approvalContinuationStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5D Readiness</h2>
+        <pre id="phase5dReadinessPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5D Blocked Reasons</h2>
+        <pre id="phase5dBlockedPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5D Allowed Targets</h2>
+        <pre id="phase5dAllowedTargetsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase5D Forbidden Actions</h2>
+        <pre id="phase5dForbiddenActionsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Second Lane Routing Decision</h2>
+        <pre id="e2bRoutingDecisionPanel">none</pre>
+      </section>
+      <section>
+        <h2>Second Lane Final Lane</h2>
+        <pre id="e2bFinalLanePanel">none</pre>
+      </section>
+      <section>
+        <h2>E2B Discovery Status</h2>
+        <pre id="e2bDiscoveryPanel">none</pre>
+      </section>
+      <section>
+        <h2>E2B Sandbox Create Status</h2>
+        <pre id="e2bSandboxCreatePanel">none</pre>
+      </section>
+      <section>
+        <h2>E2B Execution Status</h2>
+        <pre id="e2bExecutionPanel">none</pre>
+      </section>
+      <section>
+        <h2>E2B Artifact Receipt</h2>
+        <pre id="e2bArtifactPanel">none</pre>
+      </section>
+      <section>
+        <h2>E2B Teardown Status</h2>
+        <pre id="e2bTeardownPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6A Readiness</h2>
+        <pre id="phase6aReadinessPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6A Blocked Reasons</h2>
+        <pre id="phase6aBlockedPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6B Task Status</h2>
+        <pre id="phase6bTaskPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6B Failure Status</h2>
+        <pre id="phase6bFailurePanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6B Fallback Status</h2>
+        <pre id="phase6bFallbackPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6B Same-run Continue</h2>
+        <pre id="phase6bSameRunPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6B Readiness</h2>
+        <pre id="phase6bReadinessPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6B Blocked Reasons</h2>
+        <pre id="phase6bBlockedPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6B Fallback Enabled Tasks</h2>
+        <pre id="phase6bFallbackEnabledPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6B Non-fallback Tasks</h2>
+        <pre id="phase6bNonFallbackPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6C Task Type</h2>
+        <pre id="phase6cTaskTypePanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6C Patch / Diff Summary</h2>
+        <pre id="phase6cDiffSummaryPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6C Hash Status</h2>
+        <pre id="phase6cHashStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6C Writeback Gate</h2>
+        <pre id="phase6cGateStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6C Apply / Reject</h2>
+        <pre id="phase6cApplyRejectPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6C Reject Reason</h2>
+        <pre id="phase6cRejectReasonPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6C Verify Result</h2>
+        <pre id="phase6cVerifyPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6C Readiness</h2>
+        <pre id="phase6cReadinessPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6C v1 Closeout Readiness</h2>
+        <pre id="phase6cV1CloseoutPanel">none</pre>
+      </section>
+      <section>
+        <h2>Phase6C Blocked / Enabled / Rejected</h2>
+        <pre id="phase6cListsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Working Root</h2>
+        <pre id="workspaceWorkingRootPanel">none</pre>
+      </section>
+      <section>
+        <h2>Task Storage Roots</h2>
+        <pre id="workspaceStorageRootsPanel">none</pre>
+      </section>
+      <section>
+        <h2>Path Jail Status</h2>
+        <pre id="workspacePathJailPanel">none</pre>
+      </section>
+      <section>
+        <h2>Deploy Closeout Status</h2>
+        <pre id="deployCloseoutPanel">none</pre>
+      </section>
+      <section>
+        <h2>Deploy Retry Status</h2>
+        <pre id="deployRetryStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Release Receipt</h2>
+        <pre id="releaseReceiptPanel">none</pre>
+      </section>
+      <section>
+        <h2>Online Verification Status</h2>
+        <pre id="onlineVerificationPanel">none</pre>
+      </section>
+      <section>
+        <h2>Final Operational Readiness</h2>
+        <pre id="finalOperationalReadinessPanel">none</pre>
+      </section>
+      <section>
+        <h2>Operational Blocked Reasons</h2>
+        <pre id="operationalBlockedPanel">none</pre>
+      </section>
+      <section>
+        <h2>Isolation Verification</h2>
+        <pre id="isolationResultPanel">none</pre>
+      </section>
+      <section>
+        <h2>Current Command / CWD</h2>
+        <pre id="commandCwdPanel">none</pre>
+      </section>
+      <section>
+        <h2>Failed Command</h2>
+        <pre id="failedCommandPanel">none</pre>
+      </section>
+      <section>
+        <h2>Adjusted Command</h2>
+        <pre id="adjustedCommandPanel">none</pre>
+      </section>
+      <section>
+        <h2>Adjusted CWD</h2>
+        <pre id="adjustedCwdPanel">none</pre>
+      </section>
+      <section>
+        <h2>Command Policy Status</h2>
+        <pre id="commandPolicyPanel">none</pre>
+      </section>
+      <section>
+        <h2>Auth Session Status</h2>
+        <pre id="authSessionStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Wrangler OAuth Status</h2>
+        <pre id="wranglerAuthStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Vercel Auth Status</h2>
+        <pre id="vercelAuthStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Supabase Auth Status</h2>
+        <pre id="supabaseAuthStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Command Render</h2>
+        <pre id="authCommandPanel">(no command)</pre>
+      </section>
+      <section>
+        <h2>Token Input (Supabase PAT, memory-only)</h2>
+        <input id="tokenInput" type="password" placeholder="Supabase access token / PAT" />
+        <div>memory-only: token never persisted to SQLite/runs/logs</div>
+        <button id="submitTokenBtn">Submit Token</button>
+        <button id="confirmActionBtn">Confirm Auth Action</button>
+        <pre id="tokenState">idle</pre>
+      </section>
+      <section>
+        <h2>Verification Status</h2>
+        <pre id="verificationStatus">idle</pre>
+      </section>
+      <section>
+        <h2>Git Status Summary</h2>
+        <pre id="gitStatusSummaryPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Git Diff Summary</h2>
+        <pre id="gitDiffSummaryPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Verify Status</h2>
+        <pre id="verifyStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Verify Attempt</h2>
+        <pre id="verifyAttemptPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Attempt Budget</h2>
+        <pre id="attemptBudgetPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Timeout (ms)</h2>
+        <pre id="timeoutMsPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Verify Failure Reason</h2>
+        <pre id="verifyFailurePanel">none</pre>
+      </section>
+      <section>
+        <h2>Failure Class</h2>
+        <pre id="failureClassPanel">none</pre>
+      </section>
+      <section>
+        <h2>Missing Dependency</h2>
+        <pre id="missingDependencyPanel">none</pre>
+      </section>
+      <section>
+        <h2>Install Proposal</h2>
+        <pre id="dependencyInstallProposalPanel">none</pre>
+      </section>
+      <section>
+        <h2>Install Policy Status</h2>
+        <pre id="installPolicyStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Install Status</h2>
+        <pre id="installStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>IO Summary</h2>
+        <pre id="ioSummaryPanel">none</pre>
+      </section>
+      <section>
+        <h2>Repair Action</h2>
+        <pre id="repairActionPanel">none</pre>
+      </section>
+      <section>
+        <h2>Repair Strategy</h2>
+        <pre id="repairStrategyPanel">none</pre>
+      </section>
+      <section>
+        <h2>Candidate Files</h2>
+        <pre id="candidateFilesPanel">none</pre>
+      </section>
+      <section>
+        <h2>Patch Proposal</h2>
+        <pre id="patchProposalPanel">none</pre>
+      </section>
+      <section>
+        <h2>Policy Status</h2>
+        <pre id="policyStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Files Changed</h2>
+        <pre id="filesChangedPanel">none</pre>
+      </section>
+      <section>
+        <h2>Diff Artifact Path</h2>
+        <pre id="diffArtifactPanel">none</pre>
+      </section>
+      <section>
+        <h2>Rollback Snapshot</h2>
+        <pre id="rollbackSnapshotPanel">none</pre>
+      </section>
+      <section>
+        <h2>Install Rollback Snapshot ID</h2>
+        <pre id="installRollbackSnapshotIdPanel">none</pre>
+      </section>
+      <section>
+        <h2>Install Rollback Affected Files</h2>
+        <pre id="installRollbackAffectedFilesPanel">none</pre>
+      </section>
+      <section>
+        <h2>Install Rollback Status</h2>
+        <pre id="installRollbackStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Rollback Verification Status</h2>
+        <pre id="installRollbackVerificationPanel">none</pre>
+      </section>
+      <section>
+        <h2>Replay Type</h2>
+        <pre id="replayTypePanel">none</pre>
+      </section>
+      <section>
+        <h2>Replay Source Run/Artifact</h2>
+        <pre id="replaySourcePanel">none</pre>
+      </section>
+      <section>
+        <h2>Replay Policy Status</h2>
+        <pre id="replayPolicyStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Replay Command Summary</h2>
+        <pre id="replayCommandSummaryPanel">none</pre>
+      </section>
+      <section>
+        <h2>Replay Final Status</h2>
+        <pre id="replayFinalStatusPanel">none</pre>
+      </section>
+      <section>
+        <h2>Verify Retry Result</h2>
+        <pre id="verifyRetryPanel">none</pre>
+      </section>
+      <section>
+        <h2>Replay Evidence Path</h2>
+        <pre id="replayEvidencePanel">none</pre>
+      </section>
+      <section>
+        <h2>Final Status</h2>
+        <pre id="finalStatusPanel">idle</pre>
+      </section>
+      <section>
+        <h2>Controlled Failed</h2>
+        <pre id="controlledFailedPanel">none</pre>
+      </section>
+      <section>
+        <h2>Capability Grant Status</h2>
+        <pre id="grantsPanel">[]</pre>
+      </section>
+      <section>
+        <h2>Step Resumed</h2>
+        <pre id="stepResumedPanel">[]</pre>
+      </section>
+      <section>
+        <h2>File Change Summary</h2>
+        <pre id="fileSummaryPanel">summary-only placeholder; heavy diff rendering disabled in lite_8gb</pre>
+      </section>
+      <section>
+        <h2>Review Drawer</h2>
+        <details id="reviewDrawer">
+          <summary>placeholder only</summary>
+          <pre id="reviewPanel">review drawer placeholder; large review payload loading is disabled</pre>
+        </details>
+      </section>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,43 @@
+{
+  "version": "v1.semantic-config-repair",
+  "required_pipeline": [
+    "parser",
+    "structured_diff",
+    "safe_apply",
+    "verify_retry",
+    "receipt"
+  ],
+  "enabled_domains": [
+    {
+      "domain": "rust",
+      "parser": "rust_function_parser_v1",
+      "enabled": true
+    },
+    {
+      "domain": "kotlin",
+      "parser": "kotlin_function_parser_v1",
+      "enabled": true
+    },
+    {
+      "domain": "go",
+      "parser": "go/parser",
+      "enabled": true
+    },
+    {
+      "domain": "yaml",
+      "parser": "pyyaml+jsonschema",
+      "enabled": true
+    },
+    {
+      "domain": "terraform",
+      "parser": "terraform_validate",
+      "enabled": true
+    },
+    {
+      "domain": "sql",
+      "parser": "sqlite3_executescript",
+      "enabled": true
+    }
+  ],
+  "final_status": "enabled"
+}

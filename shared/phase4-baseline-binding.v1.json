@@ -1,0 +1,10 @@
+{
+  "version": "v1.phase4a",
+  "baseline_run_id": "string",
+  "smoke_run_id": "string",
+  "consistency_run_id": "string",
+  "readiness_run_id": "string",
+  "evidence_root": "string",
+  "binding_status": "created|verified|failed",
+  "created_at": "ISO-8601"
+}

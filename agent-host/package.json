@@ -1,0 +1,15 @@
+{
+  "name": "lite-codex-agent-host-phase0",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "db:init": "node src/init-db.mjs",
+    "db:inspect": "node src/inspect-db.mjs"
+  },
+  "dependencies": {
+    "e2b": "^2.19.0",
+    "openai": "^6.34.0"
+  }
+}

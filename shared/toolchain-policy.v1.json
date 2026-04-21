@@ -1,0 +1,32 @@
+{
+  "version": "v1.toolchain-policy.expansion",
+  "resource_mode": "lite_8gb",
+  "install_mode": "on_demand_only",
+  "forbid_system_path_mutation": true,
+  "forbid_global_install": true,
+  "allowed_scope": [
+    "project_local",
+    "fixture_local"
+  ],
+  "toolchains": [
+    "node",
+    "python",
+    "go",
+    "java",
+    "maven_or_gradle",
+    "wrangler",
+    "react_native_or_flutter_tooling",
+    "rust_cargo",
+    "terraform_cli",
+    "kotlin_jvm",
+    "swift_windows",
+    "flutter_sdk",
+    "yaml_schema_validator",
+    "sql_semantic_validator"
+  ],
+  "fallback_policy": {
+    "allow_controlled_boundary": true,
+    "require_block_reason": true
+  },
+  "final_status": "enabled"
+}

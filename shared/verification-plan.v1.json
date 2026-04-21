@@ -1,0 +1,16 @@
+{
+  "version": "v1.verification-plan",
+  "plan_id": "string",
+  "stack_profile_id": "string",
+  "pipeline": [
+    "format",
+    "lint",
+    "typecheck_or_compile",
+    "tests",
+    "startup_smoke",
+    "browser_or_e2e_smoke_if_applicable"
+  ],
+  "commands": ["string"],
+  "attempt_ceiling": 3,
+  "final_status": "planned | passed | failed_controlled"
+}

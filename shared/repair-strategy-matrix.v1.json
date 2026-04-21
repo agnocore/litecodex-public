@@ -1,0 +1,17 @@
+{
+  "version": "v1.repair-strategy-matrix",
+  "attempt_ceiling": 3,
+  "failure_class_to_strategy": {
+    "syntax_error": ["file_patch"],
+    "test_assertion_failure": ["file_patch"],
+    "dependency_missing": ["dependency_install_suggestion", "command_adjustment"],
+    "command_not_found": ["command_adjustment", "tool_install_required"],
+    "command_misconfigured": ["command_adjustment"],
+    "permission_denied": ["stop_and_report"],
+    "timeout": ["stop_and_report"],
+    "hardcoded_secret_risk": ["file_patch"],
+    "verify_failure": ["file_patch", "stop_and_report"]
+  },
+  "final_status": "enabled"
+}
+

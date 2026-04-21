@@ -1,0 +1,21 @@
+{
+  "version": "v1.phase3c",
+  "input": {
+    "failure_class": "string",
+    "stdout_summary": "string",
+    "stderr_summary": "string",
+    "verify_command": "string",
+    "cwd": "string",
+    "repo_context": "object"
+  },
+  "output": {
+    "candidate_files": "string[]",
+    "selected_strategy": "string",
+    "confidence": "number",
+    "reason": "string"
+  },
+  "constraints": {
+    "no_hardcoded_file_path": true,
+    "workspace_scoped_only": true
+  }
+}

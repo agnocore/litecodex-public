@@ -1,0 +1,19 @@
+{
+  "version": "v1.phase6c",
+  "workspace_sync_ready": false,
+  "writeback_gate_ready": false,
+  "conflict_reject_ready": false,
+  "phase6c_ready": false,
+  "v1_closeout_ready": false,
+  "blocked_modules": [],
+  "writeback_enabled_task_types": [
+    "isolated_patch_writeback_task",
+    "isolated_patch_verify_task"
+  ],
+  "rejected_writeback_conditions": [
+    "hash_conflict",
+    "path_forbidden",
+    "diff_binding_mismatch"
+  ],
+  "evidence_root": "evidence/phase6c-e2b-writeback-gate"
+}

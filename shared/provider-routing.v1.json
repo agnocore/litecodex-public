@@ -1,0 +1,38 @@
+{
+  "version": "v1.provider-routing.multi-provider",
+  "tavily_first_hop_rules": {
+    "default_first_hop": true,
+    "search_depth": "basic",
+    "max_results": 5,
+    "auto_parameters": false,
+    "include_raw_content": false
+  },
+  "exa_second_hop_rules": {
+    "trigger_conditions": [
+      "tavily_coverage_insufficient",
+      "high_quality_research_required",
+      "time_window_filter_required",
+      "domain_filter_required",
+      "category_filter_required"
+    ],
+    "default_mode": "highlights",
+    "full_text_non_default": true,
+    "max_second_hops": 1
+  },
+  "firecrawl_fetch_rules": {
+    "scrape_on_known_url": true,
+    "extract_on_structured_targets": true,
+    "max_urls_per_task": 3
+  },
+  "firecrawl_disabled_rules": {
+    "search_disabled_by_default": true,
+    "crawl_disabled_by_default": true,
+    "crawl_requires_explicit_approval": true
+  },
+  "stop_conditions": [
+    "decision_no_search",
+    "max_search_rounds_reached",
+    "provider_unhealthy_no_fallback"
+  ],
+  "final_status": "frozen"
+}

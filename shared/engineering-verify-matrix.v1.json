@@ -1,0 +1,104 @@
+{
+  "version": "v1.engineering-verify-matrix.expansion",
+  "default_pipeline": [
+    "format",
+    "lint",
+    "typecheck_or_compile",
+    "unit_or_integration_tests",
+    "startup_smoke",
+    "browser_or_e2e_smoke_if_applicable",
+    "deploy_preflight_if_applicable",
+    "online_verification_if_applicable"
+  ],
+  "attempt_ceiling": 3,
+  "per_pack_overrides": {
+    "frontend.react_vite_ts": [
+      "format",
+      "lint",
+      "typecheck_or_compile",
+      "unit_or_integration_tests",
+      "startup_smoke"
+    ],
+    "frontend.nextjs": [
+      "format",
+      "lint",
+      "typecheck_or_compile",
+      "unit_or_integration_tests",
+      "startup_smoke"
+    ],
+    "frontend.vue_vite": [
+      "format",
+      "lint",
+      "typecheck_or_compile",
+      "unit_or_integration_tests",
+      "startup_smoke"
+    ],
+    "backend.node_express": [
+      "lint",
+      "typecheck_or_compile",
+      "unit_or_integration_tests",
+      "startup_smoke"
+    ],
+    "backend.python_fastapi": [
+      "lint",
+      "typecheck_or_compile",
+      "unit_or_integration_tests",
+      "startup_smoke"
+    ],
+    "backend.go_gin": [
+      "typecheck_or_compile",
+      "unit_or_integration_tests",
+      "startup_smoke"
+    ],
+    "backend.java_springboot": [
+      "typecheck_or_compile",
+      "unit_or_integration_tests",
+      "startup_smoke"
+    ],
+    "worker.cloudflare": [
+      "typecheck_or_compile",
+      "unit_or_integration_tests"
+    ],
+    "fullstack.vite_fastapi": [
+      "frontend_verify",
+      "backend_verify",
+      "integration_smoke"
+    ],
+    "crossend.react_native": [
+      "lint",
+      "typecheck_or_compile",
+      "unit_or_integration_tests"
+    ],
+    "backend.rust_cargo": [
+      "typecheck_or_compile",
+      "unit_or_integration_tests"
+    ],
+    "infra.terraform_cli": [
+      "terraform_fmt_check",
+      "terraform_validate"
+    ],
+    "config.yaml_schema": [
+      "yaml_schema_validate"
+    ],
+    "data.sql_migration": [
+      "sql_migration_validate",
+      "query_smoke"
+    ],
+    "backend.kotlin_jvm": [
+      "typecheck_or_compile",
+      "unit_or_integration_tests",
+      "startup_smoke"
+    ],
+    "backend.swift_windows": [
+      "swift_compile_or_boundary_receipt"
+    ],
+    "crossend.flutter_web": [
+      "flutter_analyze_or_boundary_receipt",
+      "dart_unit_smoke"
+    ],
+    "crossend.flutter_desktop_host_blocked": [
+      "boundary_receipt_only"
+    ]
+  },
+  "final_status": "enabled"
+}

@@ -1,0 +1,21 @@
+{
+  "version": "v1.flutter-pack-hardening",
+  "pack_id": "crossend.flutter_web",
+  "host_supported_targets": [
+    "web",
+    "windows_desktop"
+  ],
+  "unsupported_targets": [
+    "ios_release_pipeline",
+    "android_store_pipeline"
+  ],
+  "required_chain": [
+    "toolchain",
+    "scaffold_or_patch",
+    "review",
+    "verify",
+    "repair",
+    "final"
+  ],
+  "final_status": "enabled"
+}

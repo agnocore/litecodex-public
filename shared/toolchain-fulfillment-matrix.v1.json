@@ -1,0 +1,103 @@
+{
+  "version": "v1.toolchain-fulfillment-matrix",
+  "lifecycle": [
+    "detect",
+    "fulfill",
+    "re_detect",
+    "verify"
+  ],
+  "toolchains": [
+    {
+      "tool_name": "rustc",
+      "required_for": [
+        "backend.rust_cargo"
+      ],
+      "verify": [
+        "rustc --version"
+      ]
+    },
+    {
+      "tool_name": "cargo",
+      "required_for": [
+        "backend.rust_cargo"
+      ],
+      "verify": [
+        "cargo --version"
+      ]
+    },
+    {
+      "tool_name": "terraform",
+      "required_for": [
+        "infra.terraform_cli"
+      ],
+      "verify": [
+        "terraform --version"
+      ]
+    },
+    {
+      "tool_name": "kotlinc",
+      "required_for": [
+        "backend.kotlin_jvm"
+      ],
+      "verify": [
+        "kotlinc -version"
+      ]
+    },
+    {
+      "tool_name": "java",
+      "required_for": [
+        "backend.kotlin_jvm"
+      ],
+      "verify": [
+        "java -version"
+      ]
+    },
+    {
+      "tool_name": "swift",
+      "required_for": [
+        "backend.swift_windows"
+      ],
+      "verify": [
+        "swift --version"
+      ]
+    },
+    {
+      "tool_name": "flutter",
+      "required_for": [
+        "crossend.flutter_web"
+      ],
+      "verify": [
+        "flutter --version",
+        "flutter doctor -v"
+      ]
+    },
+    {
+      "tool_name": "dart",
+      "required_for": [
+        "crossend.flutter_web"
+      ],
+      "verify": [
+        "dart --version"
+      ]
+    },
+    {
+      "tool_name": "yaml-schema-validator",
+      "required_for": [
+        "config.yaml_schema"
+      ],
+      "verify": [
+        "python -c \"import yaml, jsonschema; print('ok')\""
+      ]
+    },
+    {
+      "tool_name": "python-sqlite",
+      "required_for": [
+        "data.sql_migration"
+      ],
+      "verify": [
+        "python -c \"import sqlite3; print(sqlite3.sqlite_version)\""
+      ]
+    }
+  ],
+  "final_status": "enabled"
+}

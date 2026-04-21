@@ -1,0 +1,22 @@
+{
+  "version": "v1.phase6b",
+  "routing_reason": "task-risk-and-isolation",
+  "routing_policy": "lane-routing-policy.v1.json",
+  "local_allowed": [
+    "local_only_echo",
+    "local_fixture_read",
+    "local_only_verify_task"
+  ],
+  "e2b_required": [
+    "isolated_shell_probe",
+    "isolated_shell_verify_task",
+    "isolated_patch_verify_task",
+    "fallback_isolated_verify_task",
+    "strict_nonfallback_isolated_task"
+  ],
+  "e2b_optional": [
+    "candidate_isolated_task"
+  ],
+  "isolation_class": "single-sandbox-serial",
+  "final_lane": "local | e2b"
+}

@@ -1,0 +1,39 @@
+{
+  "include": [
+    "COMMUNITY_LICENSE.txt",
+    "NOTICE.md",
+    "package.json",
+    "entry/cli.mjs",
+    "entry/bin",
+    "entry/service",
+    "entry/windows",
+    "agent-host/package.json",
+    "agent-host/package-lock.json",
+    "agent-host/src",
+    "local-ui/package.json",
+    "local-ui/src",
+    "local-ui/public",
+    "shared",
+    "contracts",
+    "docs",
+    "run-ledger/init.sql",
+    "run-ledger/migrations",
+    "scripts/build-community.mjs",
+    "scripts/build-private.mjs",
+    "scripts/release-community-verify.mjs",
+    "scripts/release-lib.mjs",
+    "release/community-whitelist.json"
+  ],
+  "denyPathContains": [
+    "private-control-plane",
+    "internal-admin-console",
+    "private-plugin-registry",
+    "license-api",
+    "release-api",
+    "entry/logs",
+    "entry/state",
+    "evidence/",
+    "runs/",
+    "tmp/"
+  ]
+}

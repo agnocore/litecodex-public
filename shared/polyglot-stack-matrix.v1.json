@@ -1,0 +1,136 @@
+{
+  "version": "v1.polyglot-stack-matrix.expansion",
+  "packs": [
+    {
+      "pack_id": "frontend.react_vite_ts",
+      "app_kind": "frontend",
+      "runtime": "node",
+      "framework": "react+vite+typescript",
+      "representative_task_required": true
+    },
+    {
+      "pack_id": "frontend.nextjs",
+      "app_kind": "frontend",
+      "runtime": "node",
+      "framework": "nextjs",
+      "representative_task_required": false
+    },
+    {
+      "pack_id": "frontend.vue_vite",
+      "app_kind": "frontend",
+      "runtime": "node",
+      "framework": "vue+vite",
+      "representative_task_required": false
+    },
+    {
+      "pack_id": "backend.node_express",
+      "app_kind": "backend",
+      "runtime": "node",
+      "framework": "express",
+      "representative_task_required": true
+    },
+    {
+      "pack_id": "backend.python_fastapi",
+      "app_kind": "backend",
+      "runtime": "python",
+      "framework": "fastapi",
+      "representative_task_required": true
+    },
+    {
+      "pack_id": "backend.go_gin",
+      "app_kind": "backend",
+      "runtime": "go",
+      "framework": "gin",
+      "representative_task_required": true
+    },
+    {
+      "pack_id": "backend.java_springboot",
+      "app_kind": "backend",
+      "runtime": "java",
+      "framework": "springboot",
+      "representative_task_required": false
+    },
+    {
+      "pack_id": "worker.cloudflare",
+      "app_kind": "worker",
+      "runtime": "node",
+      "framework": "cloudflare-workers",
+      "representative_task_required": true
+    },
+    {
+      "pack_id": "fullstack.vite_fastapi",
+      "app_kind": "fullstack",
+      "runtime": "node+python",
+      "framework": "vite+fastapi",
+      "representative_task_required": true
+    },
+    {
+      "pack_id": "crossend.react_native",
+      "app_kind": "mobile",
+      "runtime": "react-native",
+      "framework": "react-native",
+      "representative_task_required": true,
+      "boundary_note": "host toolchain dependent"
+    },
+    {
+      "pack_id": "backend.rust_cargo",
+      "app_kind": "backend",
+      "runtime": "rust",
+      "framework": "cargo",
+      "representative_task_required": true
+    },
+    {
+      "pack_id": "infra.terraform_cli",
+      "app_kind": "infra",
+      "runtime": "terraform",
+      "framework": "terraform-cli",
+      "representative_task_required": true
+    },
+    {
+      "pack_id": "config.yaml_schema",
+      "app_kind": "config",
+      "runtime": "yaml",
+      "framework": "schema-validated-config",
+      "representative_task_required": true
+    },
+    {
+      "pack_id": "data.sql_migration",
+      "app_kind": "data",
+      "runtime": "sql",
+      "framework": "migration",
+      "representative_task_required": true
+    },
+    {
+      "pack_id": "backend.kotlin_jvm",
+      "app_kind": "backend",
+      "runtime": "kotlin+jvm",
+      "framework": "kotlin-jvm",
+      "representative_task_required": true
+    },
+    {
+      "pack_id": "backend.swift_windows",
+      "app_kind": "backend",
+      "runtime": "swift",
+      "framework": "swift-windows",
+      "representative_task_required": true,
+      "boundary_note": "host dependent"
+    },
+    {
+      "pack_id": "crossend.flutter_web",
+      "app_kind": "crossend",
+      "runtime": "flutter",
+      "framework": "flutter-web",
+      "representative_task_required": true,
+      "boundary_note": "host dependent"
+    },
+    {
+      "pack_id": "crossend.flutter_desktop_host_blocked",
+      "app_kind": "crossend",
+      "runtime": "flutter",
+      "framework": "flutter-desktop",
+      "representative_task_required": false,
+      "boundary_note": "host blocked deferred"
+    }
+  ],
+  "final_status": "frozen"
+}

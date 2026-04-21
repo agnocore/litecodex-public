@@ -1,0 +1,55 @@
+{
+  "version": "v1.phase6b",
+  "tasks": [
+    {
+      "task_type": "local_only_verify_task",
+      "allowed_lane": ["local"],
+      "preferred_lane": "local",
+      "requires_isolation": false,
+      "fallback_allowed": false,
+      "artifact_policy": "summary_only",
+      "timeout_policy": "local_default",
+      "final_status": "completed | failed_controlled"
+    },
+    {
+      "task_type": "isolated_shell_verify_task",
+      "allowed_lane": ["e2b"],
+      "preferred_lane": "e2b",
+      "requires_isolation": true,
+      "fallback_allowed": false,
+      "artifact_policy": "stdout_summary + artifact_receipt",
+      "timeout_policy": "e2b_execute_timeout",
+      "final_status": "completed | failed_controlled"
+    },
+    {
+      "task_type": "isolated_patch_verify_task",
+      "allowed_lane": ["e2b"],
+      "preferred_lane": "e2b",
+      "requires_isolation": true,
+      "fallback_allowed": false,
+      "artifact_policy": "stdout_summary + mutation_summary + artifact_receipt",
+      "timeout_policy": "e2b_execute_timeout",
+      "final_status": "completed | failed_controlled"
+    },
+    {
+      "task_type": "fallback_isolated_verify_task",
+      "allowed_lane": ["e2b", "local"],
+      "preferred_lane": "e2b",
+      "requires_isolation": true,
+      "fallback_allowed": true,
+      "artifact_policy": "e2b_summary + local_fallback_summary",
+      "timeout_policy": "e2b_execute_timeout",
+      "final_status": "completed | failed_controlled"
+    },
+    {
+      "task_type": "strict_nonfallback_isolated_task",
+      "allowed_lane": ["e2b"],
+      "preferred_lane": "e2b",
+      "requires_isolation": true,
+      "fallback_allowed": false,
+      "artifact_policy": "failure_summary_only",
+      "timeout_policy": "e2b_execute_timeout",
+      "final_status": "failed_controlled"
+    }
+  ]
+}

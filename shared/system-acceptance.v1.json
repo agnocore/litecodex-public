@@ -1,0 +1,31 @@
+{
+  "version": "v1.system-acceptance-closeout",
+  "acceptance_chain": [
+    "checkpoint1_workspace_root_and_task_root",
+    "checkpoint2_openai_byo_exact_validation",
+    "checkpoint3_retrieval_decision",
+    "checkpoint4_local_code_eval_fix_verify",
+    "checkpoint5_approval_pending_same_run_continue",
+    "checkpoint6_browser_readonly_verification",
+    "checkpoint7_e2b_second_lane_writeback",
+    "checkpoint8_real_deploy_closeout",
+    "checkpoint9_online_verification",
+    "checkpoint10_final_system_acceptance_readiness"
+  ],
+  "exercised_modules": [],
+  "completed_modules": [
+    "local-ui",
+    "agent-host",
+    "run-ledger",
+    "event-bus",
+    "auth-broker",
+    "capability-registry",
+    "adapter-runtime",
+    "context-engine",
+    "retrieval-broker"
+  ],
+  "non_blocking_issues": [],
+  "deferred_items": [],
+  "litecodex_system_acceptance_ready": false,
+  "evidence_root": "evidence/system-acceptance-closeout"
+}

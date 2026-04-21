@@ -1,0 +1,20 @@
+{
+  "version": "v1.system-acceptance-regression",
+  "selected_story": "global_system_acceptance_chain_v1",
+  "required_checkpoints": [
+    "checkpoint1_workspace_root_and_task_root",
+    "checkpoint2_openai_byo_exact_validation",
+    "checkpoint3_retrieval_decision",
+    "checkpoint4_local_code_eval_fix_verify",
+    "checkpoint8_real_deploy_closeout",
+    "checkpoint9_online_verification",
+    "checkpoint10_final_system_acceptance_readiness"
+  ],
+  "optional_checkpoints": [
+    "checkpoint5_approval_pending_same_run_continue",
+    "checkpoint6_browser_readonly_verification",
+    "checkpoint7_e2b_second_lane_writeback"
+  ],
+  "failure_rule": "any_required_checkpoint_failed_or_blocked",
+  "final_status": "frozen"
+}

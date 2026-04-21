@@ -1,0 +1,13 @@
+{
+  "version": "v1.terraform-preflight",
+  "allowed_commands": [
+    "terraform fmt -check -recursive",
+    "terraform validate"
+  ],
+  "forbidden_commands": [
+    "terraform apply",
+    "terraform destroy"
+  ],
+  "plan_mode": "validate_only",
+  "final_status": "enabled"
+}

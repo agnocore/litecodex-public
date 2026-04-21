@@ -1,0 +1,30 @@
+Lite Codex Community License v1.0 (LCCL-1.0)
+
+Copyright (c) Lite Codex contributors.
+All rights reserved.
+
+1) Grant
+You may view, copy, install, run, and modify this Community Edition for personal or internal organizational use.
+
+2) Redistribution
+You may redistribute source/binaries of this Community Edition only if:
+- this license text is retained,
+- copyright and notices are retained,
+- trademark policy is respected,
+- recipients are informed this is Community Edition.
+
+3) Restrictions
+You may not:
+- provide this software as a hosted/managed service to third parties for commercial use,
+- bypass or disable entitlement or update signature verification controls,
+- remove or falsify attribution, notice, or license metadata,
+- use Lite Codex marks in ways prohibited by TRADEMARK_POLICY.md.
+
+4) Private Control Plane
+Official signing, entitlement issuance, private plugin distribution, and internal admin control plane are not granted by this license.
+
+5) No Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+6) Liability
+IN NO EVENT SHALL COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY.

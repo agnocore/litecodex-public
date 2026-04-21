@@ -1,0 +1,13 @@
+{
+  "version": "v1.phase3c",
+  "schema": {
+    "proposal_id": "string",
+    "run_id": "string",
+    "target_files": "string[]",
+    "hunks_summary": "string[]",
+    "before_hash": "string",
+    "expected_after_hash": "string",
+    "reason": "string",
+    "risk_level": "low|medium|high"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "version": "v1.phase3e",
+  "snapshot_id": "string",
+  "affected_files": "string[]",
+  "package_json_hash_before": "string|null",
+  "lockfile_hash_before": "string|null",
+  "node_modules_policy": "remove_local_node_modules_on_restore",
+  "restore_steps": [
+    "restore_files",
+    "reset_node_modules_if_needed",
+    "verify_hash_and_git_status"
+  ],
+  "verify_after_restore": "hash_and_git_status",
+  "rollback_status": "snapshot_created|started|completed|failed"
+}
+

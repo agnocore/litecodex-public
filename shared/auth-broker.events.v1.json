@@ -1,0 +1,114 @@
+{
+  "version": "v1",
+  "event_order": [
+    "step.requested",
+    "auth.required",
+    "auth.mode.selected",
+    "auth.challenge.emitted",
+    "auth.browser_opened | auth.command_rendered | auth.input_requested",
+    "auth.pending_user_action",
+    "auth.user_submitted | auth.detected_external_completion",
+    "auth.verifying",
+    "auth.verified | auth.failed | auth.timeout | auth.cancelled",
+    "capability.granted",
+    "step.resumed",
+    "step.completed"
+  ],
+  "events": {
+    "step.requested": {
+      "required": ["run_id", "step_id", "required_capability", "selected_recipe_id", "selected_verifier_id"]
+    },
+    "auth.required": {
+      "required": ["run_id", "auth_session_id", "step_id", "required_capability", "mode"]
+    },
+    "auth.mode.selected": {
+      "required": ["run_id", "auth_session_id", "mode", "selected_recipe_id", "selected_verifier_id"]
+    },
+    "auth.challenge.emitted": {
+      "required": ["run_id", "auth_session_id", "challenge_renderer", "selected_recipe_id", "selected_verifier_id"]
+    },
+    "auth.browser_opened": {
+      "required": ["run_id", "auth_session_id", "browser_url", "callback_hint"]
+    },
+    "auth.command_rendered": {
+      "required": ["run_id", "auth_session_id", "command", "instruction"]
+    },
+    "auth.input_requested": {
+      "required": ["run_id", "auth_session_id", "input_type", "input_hint"],
+      "recommended": ["memory_only", "selected_recipe_id", "selected_verifier_id", "platform"]
+    },
+    "auth.pending_user_action": {
+      "required": ["run_id", "auth_session_id", "mode", "status"]
+    },
+    "auth.user_submitted": {
+      "required": ["run_id", "auth_session_id", "submission_type"],
+      "required_when_submission_type_token_input": ["token_present", "token_length", "redacted"],
+      "forbidden": ["token", "pat", "secret", "api_key"]
+    },
+    "auth.detected_external_completion": {
+      "required": [
+        "run_id",
+        "auth_session_id",
+        "platform",
+        "platform_auth_type",
+        "detector",
+        "detection_signal",
+        "selected_recipe_id",
+        "selected_verifier_id"
+      ],
+      "forbidden": ["token", "otp", "cookie", "session_secret", "auth_url_query_raw"]
+    },
+    "auth.verifying": {
+      "required": ["run_id", "auth_session_id", "verifier_id", "verification_source"]
+    },
+    "auth.verified": {
+      "required": [
+        "run_id",
+        "auth_session_id",
+        "required_capability",
+        "selected_recipe_id",
+        "selected_verifier_id",
+        "verified_capabilities",
+        "platform_auth_type"
+      ],
+      "recommended": ["platform_account_hint", "platform_scope_hint", "platform_verification_command"]
+    },
+    "auth.failed": {
+      "required": ["run_id", "auth_session_id", "error_code", "retryable"]
+    },
+    "auth.timeout": {
+      "required": ["run_id", "auth_session_id", "timeout_at", "error_code"]
+    },
+    "auth.cancelled": {
+      "required": ["run_id", "auth_session_id", "cancel_reason", "cancelled_at", "error_code"]
+    },
+    "capability.granted": {
+      "required": [
+        "run_id",
+        "auth_session_id",
+        "capability_key",
+        "grant_id",
+        "grant_status",
+        "grant_mode",
+        "grant_recipe_id",
+        "verifier_id",
+        "expires_at"
+      ]
+    },
+    "capability.expired": {
+      "required": ["run_id", "grant_id", "capability_key", "status", "expires_at"]
+    },
+    "capability.revoked": {
+      "required": ["run_id", "grant_id", "capability_key", "status", "revoke_reason", "revoked_at"]
+    },
+    "step.resumed": {
+      "required": ["run_id", "step_id", "resume_reason"]
+    },
+    "step.completed": {
+      "required": ["run_id", "step_id"]
+    },
+    "step.failed": {
+      "required": ["run_id", "step_id", "reason"]
+    }
+  }
+}

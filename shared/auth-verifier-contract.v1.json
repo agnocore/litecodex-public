@@ -1,0 +1,99 @@
+{
+  "version": "v1",
+  "description": "Verifier plug-in contract for Auth Broker local serial runtime",
+  "verifier_result_schema": {
+    "ok": "boolean",
+    "retryable": "boolean",
+    "error_code": "string|null",
+    "verified_capabilities": "string[]"
+  },
+  "verifiers": [
+    {
+      "id": "wrangler_oauth_verifier",
+      "mode": "browser_oauth",
+      "platform": "cloudflare_wrangler",
+      "input": {
+        "confirmed": "boolean(optional)",
+        "detected_external_completion": "boolean(optional)",
+        "probe_only": "boolean(optional)"
+      },
+      "result_extensions": {
+        "platform_account_hint": "string|null",
+        "platform_scope_hint": "string|null",
+        "platform_auth_type": "string|null",
+        "capability_mapping": "string[]"
+      },
+      "retryable_on_fail": true
+    },
+    {
+      "id": "verifier.vercel_cli_login.real.v1",
+      "mode": "cli_login",
+      "platform": "vercel",
+      "input": {
+        "confirmed": "boolean(optional)",
+        "detected_external_completion": "boolean(optional)",
+        "probe_only": "boolean(optional)"
+      },
+      "result_extensions": {
+        "platform_account_hint": "string|null",
+        "platform_scope_hint": "string|null",
+        "capability_mapping": "string[]"
+      },
+      "retryable_on_fail": true
+    },
+    {
+      "id": "supabase_token_verifier",
+      "mode": "token_input",
+      "platform": "supabase",
+      "input": {
+        "token": "string(memory-only)",
+        "probe_only": "boolean(optional)"
+      },
+      "result_extensions": {
+        "platform_account_hint": "string|null",
+        "platform_scope_hint": "string|null",
+        "platform_auth_type": "string|null",
+        "platform_verification_command": "string|null",
+        "capability_mapping": "string[]"
+      },
+      "retryable_on_fail": true
+    },
+    {
+      "id": "verifier.browser_oauth.local_confirm.v1",
+      "mode": "browser_oauth",
+      "input": {
+        "confirmed": "boolean"
+      },
+      "retryable_on_fail": true
+    },
+    {
+      "id": "verifier.cli_login.local_confirm.v1",
+      "mode": "cli_login",
+      "input": {
+        "confirmed": "boolean"
+      },
+      "retryable_on_fail": true
+    },
+    {
+      "id": "verifier.token_input.local_nonempty.v1",
+      "mode": "token_input",
+      "input": {
+        "token": "string(memory-only)"
+      },
+      "retryable_on_fail": true
+    },
+    {
+      "id": "verifier.device_code.local_confirm.v1",
+      "mode": "device_code",
+      "input": {
+        "confirmed": "boolean"
+      },
+      "retryable_on_fail": true
+    }
+  ],
+  "sensitive_policy": {
+    "persist_token_values": false,
+    "persist_pat_values": false,
+    "persist_device_secret_values": false
+  }
+}

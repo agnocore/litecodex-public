@@ -1,0 +1,229 @@
+{
+  "version": "post-v1-release-gate.v1",
+  "transport": {
+    "stream": "SSE GET /events",
+    "command": "HTTP JSON"
+  },
+  "runtimeProfile": "lite_8gb",
+  "eventEnvelope": {
+    "event_id": "string",
+    "run_id": "string",
+    "seq": "integer",
+    "type": "run.created | step.requested | capability.checked | capability.granted | capability.reused | adapter.selected | adapter.install.required | project.inspect.started | project.inspect.completed | workspace.trust.checked | tool.discovery.started | tool.discovery.completed | tool.install.proposed | tool.install.policy_checked | tool.install.started | tool.install.completed | tool.install.rejected | tool.install.rollback_snapshot.created | tool.install.rollback.started | tool.install.rollback.completed | tool.install.rollback.verified | file.read.started | file.read.completed | file.write.started | file.write.completed | shell.command.started | shell.command.completed | git.status.completed | git.diff.completed | verify.started | verify.failed | verify.failure.classified | verify.retry.scheduled | verify.passed | verify.controlled_failed | repair.planner.started | repair.candidate_files.selected | repair.strategy.selected | patch.proposal.created | patch.policy.checked | patch.applied | patch.rejected | rollback.snapshot.created | rollback.applied | command.adjustment.proposed | command.adjustment.policy_checked | command.adjustment.applied | dependency.missing.detected | dependency.install.proposed | dependency.install.policy_checked | dependency.install.rollback_snapshot.created | dependency.install.started | dependency.install.completed | dependency.install.rejected | install.rollback.snapshot.created | install.rollback.started | install.rollback.completed | install.rollback.failed | replay.runner.started | replay.policy.checked | replay.command.started | replay.command.completed | replay.verify.started | replay.verify.completed | replay.completed | replay.failed_controlled | repair.started | repair.completed | repair.skipped | repair.failed | replay.evidence.written | phase3.closeout.started | phase3.smoke.case.started | phase3.smoke.case.completed | phase3.smoke.case.failed_controlled | contract.consistency.checked | schema.consistency.checked | phase4.readiness.checked | phase3.closeout.completed | auth.required | auth.mode.selected | auth.challenge.emitted | auth.browser_opened | auth.command_rendered | auth.input_requested | auth.pending_user_action | auth.user_submitted | auth.detected_external_completion | auth.verifying | auth.verified | auth.submit.duplicate_ignored | auth.failed | auth.timeout | auth.cancelled | capability.expired | capability.revoked | capability.lifecycle.updated | step.resumed | step.resume.duplicate_ignored | step.completed | step.failed | step.failed_controlled | context.hydration.started | context.hydration.completed | reconnect.started | reconnect.missed_events.replayed | reconnect.completed | resume.requested | resume.started | resume.completed | resume.rejected | baseline.binding.created | baseline.binding.verified | compact.requested | compact.started | compact.artifact.written | compact.ledger.mapped | compact.completed | compact.failed_controlled | stale.running.detected | stale.running.recovery.started | stale.running.recovery.completed | stale.running.recovery.failed_controlled | fork.requested | fork.started | fork.workspace.created | fork.lineage.written | fork.artifacts.mapped | fork.completed | fork.failed_controlled | lineage.verified | fork.hydration.completed | fork.resume.completed | fork.compact.completed | fork.policy.checked | fork.policy.rejected | fork.policy.redirected | context.projection.built | context.projection.verified | phase4.closeout.started | phase4.closeout.completed | phase5.readiness.checked | browser.discovery.started | browser.discovery.completed | browser.adapter.install.required | browser.policy.checked | browser.smoke.started | browser.smoke.completed | deploy.adapter.discovery.started | deploy.adapter.discovery.completed | deploy.policy.checked | deploy.action.rejected | phase5a.readiness.checked | playwright.discovery.started | playwright.discovery.completed | playwright.install.required | playwright.install.completed | browser.matrix.action.started | browser.matrix.action.completed | browser.matrix.action.blocked | browser.verification.gate.checked | browser.verification.completed | phase5b.readiness.checked | playwright.install.started | playwright.install.failed_controlled | playwright.runtime.profile.applied | browser.matrix.rerun.started | browser.matrix.rerun.completed | browser.external.allowlist.checked | approval.escalation.checked | browser.external.verification.started | browser.external.verification.completed | browser.external.verification.rejected | phase5c.readiness.checked | approval.pending.created | approval.pending.restored | approval.pending.listed | approval.approved | approval.rejected | approval.expired | approval.continue.started | approval.continue.completed | phase5d.readiness.checked | e2b.discovery.started | e2b.discovery.completed | e2b.routing.selected | e2b.sandbox.create.started | e2b.sandbox.create.completed | e2b.execution.started | e2b.execution.completed | e2b.artifacts.collected | e2b.sandbox.teardown.started | e2b.sandbox.teardown.completed | phase6a.readiness.checked | e2b.task.started | e2b.task.completed | e2b.task.failed | e2b.failure.classified | e2b.fallback.selected | e2b.fallback.completed | e2b.fallback.failed_controlled | phase6b.readiness.checked | e2b.workspace.sync.started | e2b.workspace.sync.completed | writeback.candidate.created | writeback.gate.checked | writeback.applied | writeback.rejected | writeback.verify.completed | phase6c.readiness.checked | workspace.root.bound | workspace.root.rejected | task.storage.created | path.jail.checked | deploy.preflight.started | deploy.preflight.completed | deploy.command.started | deploy.command.completed | deploy.command.failed | deploy.retry.started | deploy.retry.completed | release.receipt.created | online.verification.started | online.verification.completed | final.operational.readiness.checked | byo.bind.started | byo.bind.completed | byo.validation.started | byo.validation.completed | byo.unbound | byo.deleted | retrieval.design.frozen | retrieval.decision | retrieval.query_planned | retrieval.provider_selected | retrieval.search_started | retrieval.search_completed | retrieval.fetch_started | retrieval.fetch_completed | retrieval.bundle_ready | retrieval.readiness.checked | retrieval.citation.gate.checked | retrieval.conflict.detected | retrieval.conflict.resolved | retrieval.conflict.unresolved | retrieval.budget.checked | retrieval.degraded.mode.entered | retrieval.health.updated | retrieval.governance.readiness.checked | acceptance.chain.started | acceptance.chain.checkpoint.completed | acceptance.chain.completed | acceptance.readiness.checked | engineering.intent.compiled | engineering.stack_profile.selected | engineering.repo_plan.generated | engineering.file_plan.generated | engineering.verification_plan.generated | engineering.deploy_plan.generated | engineering.dimension.completed | engineering.skill_pack.selected | engineering.review_gate.checked | engineering.verify.started | engineering.verify.completed | engineering.repair.started | engineering.repair.completed | engineering.readiness.checked | polyglot.stack_matrix.checked | polyglot.skill_pack.routed | polyglot.skill_run.started | polyglot.skill_run.completed | toolchain.install.policy.checked | toolchain.install.started | toolchain.install.completed | toolchain.install.failed_controlled | engineering.verify.matrix.started | engineering.verify.matrix.completed | engineering.review.matrix.started | engineering.review.matrix.completed | engineering.repair.loop.started | engineering.repair.loop.completed | engineering.production.readiness.checked | openai.transport.probe.started | openai.transport.probe.completed | openai.codegen.route.bound | openai.codegen.route.failed | openai.codegen.route.ready | polyglot.toolchain.fulfillment.started | polyglot.toolchain.fulfillment.completed | polyglot.toolchain.fulfillment.failed_controlled | stack.pack.readiness.checked | engineering.layer.readiness.checked | polyglot.toolchain.closeout.readiness.checked | hardening.stack_pack.checked | hardening.ast_repair.started | hardening.ast_repair.completed | hardening.deploy.standardization.checked | hardening.crossend.checked | hardening.engineering_layer.checked | hardening.readiness.checked | expansion.pack.checked | expansion.toolchain.fulfillment.checked | expansion.semantic.repair.started | expansion.semantic.repair.completed | expansion.sql.verify.checked | expansion.terraform.preflight.checked | expansion.flutter.checked | expansion.readiness.checked | flutter.finalization.started | flutter.finalization.completed | flutter.finalization.failed | swift.boundary.checked | compiled.ast.repair.started | compiled.ast.repair.completed | compiled.ast.repair.failed | deploy.standardization.second_batch.started | deploy.standardization.second_batch.completed | polyglot.final.aggregation.checked | capability.partitioned | host.safe.chain.completed | external.runner.required | release.boundary.frozen | reality.freeze.completed | runner.registered | runner.capability.detected | runner.job.started | runner.job.completed | runner.artifact.synced | runner.failure.classified | android.lane.completed | apple.boundary.frozen | store.boundary.frozen | external.expansion.readiness.checked | android.fulfillment.started | android.fulfillment.completed | android.redetect.completed | android.build.started | android.build.completed | android.verify.completed | android.receipt.written | android.readiness.checked | prompt.assembly.started | prompt.assembly.completed | runtime.policy.checked | runtime.policy.blocked | runtime.sandbox.command.started | runtime.sandbox.command.completed | eval.release.gate.checked | noninteractive.exec.completed | closure.verdict.generated",
+    "ts": "ISO-8601",
+    "payload": "object"
+  },
+  "sourceOfTruth": {
+    "sqlite": "run-ledger/ledger.sqlite",
+    "artifacts": "runs/<run-id>/"
+  },
+  "phase6b_required_events": [
+    "e2b.task.started",
+    "e2b.task.completed",
+    "e2b.task.failed",
+    "e2b.failure.classified",
+    "e2b.fallback.selected",
+    "e2b.fallback.completed",
+    "e2b.fallback.failed_controlled",
+    "phase6b.readiness.checked"
+  ],
+  "phase6c_required_events": [
+    "e2b.workspace.sync.started",
+    "e2b.workspace.sync.completed",
+    "writeback.candidate.created",
+    "writeback.gate.checked",
+    "writeback.applied",
+    "writeback.rejected",
+    "writeback.verify.completed",
+    "phase6c.readiness.checked"
+  ],
+  "workspace_root_deploy_required_events": [
+    "workspace.root.bound",
+    "workspace.root.rejected",
+    "task.storage.created",
+    "path.jail.checked",
+    "deploy.preflight.started",
+    "deploy.preflight.completed",
+    "deploy.command.started",
+    "deploy.command.completed",
+    "deploy.command.failed",
+    "deploy.retry.started",
+    "deploy.retry.completed",
+    "release.receipt.created",
+    "online.verification.started",
+    "online.verification.completed",
+    "final.operational.readiness.checked"
+  ],
+  "byo_key_hardening_required_events": [
+    "byo.bind.started",
+    "byo.bind.completed",
+    "byo.validation.started",
+    "byo.validation.completed",
+    "byo.unbound",
+    "byo.deleted",
+    "retrieval.decision",
+    "retrieval.query_planned",
+    "retrieval.provider_selected",
+    "retrieval.search_started",
+    "retrieval.search_completed",
+    "retrieval.fetch_started",
+    "retrieval.fetch_completed",
+    "retrieval.bundle_ready",
+    "retrieval.design.frozen",
+    "retrieval.readiness.checked"
+  ],
+  "retrieval_governance_required_events": [
+    "retrieval.decision",
+    "retrieval.provider_selected",
+    "retrieval.search_started",
+    "retrieval.search_completed",
+    "retrieval.fetch_started",
+    "retrieval.fetch_completed",
+    "retrieval.citation.gate.checked",
+    "retrieval.conflict.detected",
+    "retrieval.conflict.resolved",
+    "retrieval.conflict.unresolved",
+    "retrieval.budget.checked",
+    "retrieval.degraded.mode.entered",
+    "retrieval.health.updated",
+    "retrieval.bundle_ready",
+    "retrieval.governance.readiness.checked"
+  ],
+  "system_acceptance_required_events": [
+    "acceptance.chain.started",
+    "acceptance.chain.checkpoint.completed",
+    "acceptance.chain.completed",
+    "acceptance.readiness.checked"
+  ],
+  "task_to_engineering_required_events": [
+    "engineering.intent.compiled",
+    "engineering.stack_profile.selected",
+    "engineering.repo_plan.generated",
+    "engineering.file_plan.generated",
+    "engineering.verification_plan.generated",
+    "engineering.deploy_plan.generated",
+    "engineering.dimension.completed",
+    "engineering.skill_pack.selected",
+    "engineering.review_gate.checked",
+    "engineering.verify.started",
+    "engineering.verify.completed",
+    "engineering.repair.started",
+    "engineering.repair.completed",
+    "engineering.readiness.checked"
+  ],
+  "polyglot_engineering_required_events": [
+    "polyglot.stack_matrix.checked",
+    "polyglot.skill_pack.routed",
+    "polyglot.skill_run.started",
+    "polyglot.skill_run.completed",
+    "toolchain.install.policy.checked",
+    "toolchain.install.started",
+    "toolchain.install.completed",
+    "toolchain.install.failed_controlled",
+    "engineering.verify.matrix.started",
+    "engineering.verify.matrix.completed",
+    "engineering.review.matrix.started",
+    "engineering.review.matrix.completed",
+    "engineering.repair.loop.started",
+    "engineering.repair.loop.completed",
+    "engineering.production.readiness.checked"
+  ],
+  "polyglot_toolchain_bringup_required_events": [
+    "polyglot.toolchain.fulfillment.started",
+    "polyglot.toolchain.fulfillment.completed",
+    "polyglot.toolchain.fulfillment.failed_controlled",
+    "stack.pack.readiness.checked",
+    "engineering.layer.readiness.checked",
+    "polyglot.toolchain.closeout.readiness.checked"
+  ],
+  "openai_transport_required_events": [
+    "openai.transport.probe.started",
+    "openai.transport.probe.completed",
+    "openai.codegen.route.bound",
+    "openai.codegen.route.failed",
+    "openai.codegen.route.ready"
+  ],
+  "engineering_hardening_required_events": [
+    "hardening.stack_pack.checked",
+    "hardening.ast_repair.started",
+    "hardening.ast_repair.completed",
+    "hardening.deploy.standardization.checked",
+    "hardening.crossend.checked",
+    "hardening.engineering_layer.checked",
+    "hardening.readiness.checked"
+  ],
+  "polyglot_expansion_required_events": [
+    "expansion.pack.checked",
+    "expansion.toolchain.fulfillment.checked",
+    "expansion.semantic.repair.started",
+    "expansion.semantic.repair.completed",
+    "expansion.sql.verify.checked",
+    "expansion.terraform.preflight.checked",
+    "expansion.flutter.checked",
+    "expansion.readiness.checked",
+    "toolchain.remediation.started",
+    "toolchain.remediation.completed",
+    "toolchain.remediation.failed",
+    "flutter.boundary.frozen",
+    "polyglot.expansion.aggregation.checked"
+  ],
+  "polyglot_expansion_root_cause_required_events": [
+    "toolchain.remediation.started",
+    "toolchain.remediation.completed",
+    "toolchain.remediation.failed",
+    "flutter.boundary.frozen",
+    "polyglot.expansion.aggregation.checked"
+  ],
+  "polyglot_finalization_required_events": [
+    "flutter.finalization.started",
+    "flutter.finalization.completed",
+    "flutter.finalization.failed",
+    "swift.boundary.checked",
+    "compiled.ast.repair.started",
+    "compiled.ast.repair.completed",
+    "compiled.ast.repair.failed",
+    "deploy.standardization.second_batch.started",
+    "deploy.standardization.second_batch.completed",
+    "polyglot.final.aggregation.checked"
+  ],
+  "multi_host_productionization_required_events": [
+    "capability.partitioned",
+    "host.safe.chain.completed",
+    "external.runner.required",
+    "release.boundary.frozen",
+    "reality.freeze.completed"
+  ],
+  "external_runner_execution_required_events": [
+    "runner.registered",
+    "runner.capability.detected",
+    "runner.job.started",
+    "runner.job.completed",
+    "runner.artifact.synced",
+    "runner.failure.classified",
+    "android.lane.completed",
+    "apple.boundary.frozen",
+    "store.boundary.frozen",
+    "external.expansion.readiness.checked"
+  ],
+  "android_fulfillment_required_events": [
+    "android.fulfillment.started",
+    "android.fulfillment.completed",
+    "android.redetect.completed",
+    "android.build.started",
+    "android.build.completed",
+    "android.verify.completed",
+    "android.receipt.written",
+    "android.readiness.checked"
+  ],
+  "protocol_release_gate_required_events": [
+    "prompt.assembly.started",
+    "prompt.assembly.completed",
+    "runtime.policy.checked",
+    "runtime.policy.blocked",
+    "runtime.sandbox.command.started",
+    "runtime.sandbox.command.completed",
+    "eval.release.gate.checked",
+    "noninteractive.exec.completed",
+    "closure.verdict.generated"
+  ]
+}

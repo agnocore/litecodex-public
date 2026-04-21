@@ -1,0 +1,16 @@
+{
+  "version": "v1.phase6b",
+  "real_task_matrix_ready": false,
+  "failure_hardening_ready": false,
+  "local_fallback_ready": false,
+  "phase6b_ready": false,
+  "phase6c_ready": false,
+  "blocked_modules": [],
+  "fallback_enabled_tasks": [
+    "fallback_isolated_verify_task"
+  ],
+  "non_fallback_tasks": [
+    "strict_nonfallback_isolated_task"
+  ],
+  "evidence_root": "evidence/phase6b-e2b-real-task-matrix"
+}

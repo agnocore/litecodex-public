@@ -1,0 +1,14 @@
+{
+  "version": "v1.phase3e",
+  "replay_id": "string",
+  "source_run_id": "string",
+  "source_artifact_path": "string",
+  "replay_type": "command_adjustment|dependency_install|verify_retry",
+  "command": "string",
+  "cwd": "string",
+  "env_policy": "inherit_sanitized_env",
+  "allowed_root": "{workspace_root}",
+  "policy_status": "pending|approved|rejected_*",
+  "final_status": "completed|failed_controlled"
+}
+

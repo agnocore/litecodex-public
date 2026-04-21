@@ -1,0 +1,36 @@
+{
+  "version": "v1",
+  "id": "recipe.vercel_cli_login.real.v1",
+  "platform": "vercel",
+  "mode": "cli_login",
+  "challenge_renderer": "command_rendered",
+  "challenge": {
+    "command": "vercel login",
+    "pending_hint": "Complete browser/email OTP flow in local terminal/browser. Host keeps run alive and polls verifier.",
+    "sensitive_policy": {
+      "persist_otp": false,
+      "persist_token": false,
+      "persist_cookie": false,
+      "persist_session_secret": false
+    }
+  },
+  "verifier": {
+    "id": "verifier.vercel_cli_login.real.v1",
+    "primary_probe": "vercel whoami",
+    "secondary_probes": [
+      "vercel teams ls",
+      "vercel projects ls"
+    ],
+    "verified_capability_mapping": [
+      "vercel.account.authenticated",
+      "vercel.scope.inspect",
+      "vercel.project.read",
+      "vercel.project.link.inspect"
+    ]
+  },
+  "scope": {
+    "scope_type": "workspace",
+    "scope_value_source": "repo_root"
+  },
+  "grant_ttl_seconds": 3600
+}

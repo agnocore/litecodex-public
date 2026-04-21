@@ -1,0 +1,20 @@
+{
+  "version": "v1.retrieval-cost-policy.multi-provider",
+  "max_search_rounds": 2,
+  "max_urls_per_task": 3,
+  "crawl_default_disabled": true,
+  "retry_policy": {
+    "max_retries_per_provider": 1,
+    "retryable_errors": ["network_unreachable", "rate_limited", "provider_5xx"],
+    "same_provider_retry_before_fallback": false
+  },
+  "credits_recording": {
+    "enabled": true,
+    "mode": "estimate"
+  },
+  "latency_recording": {
+    "enabled": true,
+    "unit": "ms"
+  },
+  "final_status": "frozen"
+}

@@ -1,0 +1,28 @@
+{
+  "version": "v1.phase5b",
+  "required_capabilities": [
+    "vercel.account.authenticated",
+    "cloudflare.account.authenticated",
+    "supabase.account.authenticated"
+  ],
+  "allowed_readonly_actions": [
+    "wrangler whoami --json",
+    "vercel whoami",
+    "supabase --version",
+    "supabase projects list -o json"
+  ],
+  "forbidden_write_actions": [
+    "wrangler deploy",
+    "vercel deploy",
+    "supabase db push",
+    "supabase functions deploy",
+    "wrangler secret",
+    "vercel env add"
+  ],
+  "verification_target_policy": {
+    "allow_local_or_readonly_only": true,
+    "forbid_remote_write_targets": true
+  },
+  "approval_class": "readonly_verification",
+  "final_status": "passed|blocked|failed_controlled"
+}

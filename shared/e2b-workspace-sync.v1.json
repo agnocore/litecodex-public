@@ -1,0 +1,18 @@
+{
+  "version": "v1.phase6c",
+  "task_type": "isolated_patch_writeback_task | isolated_patch_verify_task",
+  "sandbox_workspace_ref": "/tmp/lite_phase6c",
+  "local_workspace_ref": "workspaces/phase6c-fixture",
+  "candidate_files": [
+    "src/target.txt"
+  ],
+  "patch_artifact_path": "runs/<run-id>/artifacts/phase6c_<case>_patch.diff",
+  "diff_summary": {
+    "max_preview_chars": 512,
+    "include_hash_binding": true,
+    "include_candidate_files": true
+  },
+  "file_hashes_before": "sha256_map",
+  "file_hashes_after": "sha256_map",
+  "final_status": "synced | failed_controlled"
+}

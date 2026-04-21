@@ -1,0 +1,11 @@
+{
+  "version": "v1.phase3c",
+  "schema": {
+    "snapshot_id": "string",
+    "run_id": "string",
+    "files": "string[]",
+    "before_hashes": "object",
+    "restore_policy": "workspace_scoped_restore_only",
+    "created_at": "ISO-8601"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "version": "v1.foundation-final-closeout",
+  "routes": {
+    "create": "POST /entry/sessions",
+    "continue_last": "POST /entry/sessions/continue-last",
+    "list": "GET /entry/sessions"
+  },
+  "session_schema": {
+    "id": "string",
+    "workspace_id": "string|null",
+    "workspace_path": "string",
+    "run_id": "string",
+    "title": "string",
+    "status": "active|completed|archived",
+    "created_at": "ISO-8601",
+    "updated_at": "ISO-8601",
+    "last_active_at": "ISO-8601"
+  }
+}

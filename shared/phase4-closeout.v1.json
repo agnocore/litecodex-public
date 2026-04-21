@@ -1,0 +1,36 @@
+{
+  "version": "v1.phase4d",
+  "required_phase4_modules": [
+    "hydrate",
+    "reconnect",
+    "resume",
+    "compact",
+    "stale_running_recovery",
+    "fork",
+    "lineage",
+    "projection_build",
+    "baseline_binding",
+    "fallback_paths"
+  ],
+  "regression_suite_cases": [
+    "hydrate",
+    "reconnect",
+    "resume",
+    "compact",
+    "stale_running_recovery",
+    "fork",
+    "lineage",
+    "projection_build",
+    "baseline_binding",
+    "fallback_paths"
+  ],
+  "projection_invariants": [
+    "projection_authoritative_from_ledger",
+    "no_ui_local_guess",
+    "no_latest_ambiguous_binding",
+    "terminal_status_invariant"
+  ],
+  "closeout_status": "pending|completed|failed_controlled",
+  "risks": "string[]",
+  "evidence_root": "string"
+}

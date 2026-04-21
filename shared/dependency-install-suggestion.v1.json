@@ -1,0 +1,25 @@
+{
+  "version": "v1.phase3e",
+  "input": {
+    "missing_dependency": "string",
+    "package_manager": "npm|pnpm|yarn",
+    "package_json_path": "string",
+    "verify_command": "string",
+    "cwd": "string"
+  },
+  "output": {
+    "install_command": "string",
+    "dependency_name": "string",
+    "dependency_type": "dependency|devDependency",
+    "reason": "string",
+    "risk_level": "low|medium|high"
+  },
+  "constraints": {
+    "project_local_only": true,
+    "no_global_install": true,
+    "no_docker": true,
+    "no_playwright_browser_install": true,
+    "install_rollback_snapshot_required": true,
+    "install_rollback_verification_required": true
+  }
+}

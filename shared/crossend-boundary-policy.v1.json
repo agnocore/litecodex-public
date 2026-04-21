@@ -1,0 +1,16 @@
+{
+  "version": "v1.crossend-boundary-policy",
+  "selected_pack": "crossend.react_native",
+  "pass_requirements": {
+    "toolchain_probe_required": true,
+    "cli_required": "react-native-cli",
+    "representative_verify_required": true,
+    "boundary_subset_cannot_count_as_pass": true
+  },
+  "blocked_when": [
+    "react_native_cli_missing",
+    "crossend_verify_failed",
+    "device_only_dependency_without_host_capability"
+  ],
+  "final_status": "enabled"
+}

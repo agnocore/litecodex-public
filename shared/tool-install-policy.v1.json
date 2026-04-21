@@ -1,0 +1,16 @@
+{
+  "version": "v1.phase3f",
+  "allowed_install_roots": [
+    "{workspace_root}"
+  ],
+  "forbidden_global_install": true,
+  "forbidden_system_path_mutation": true,
+  "allowed_install_modes": [
+    "fixture_local",
+    "project_local"
+  ],
+  "max_install_seconds": 30,
+  "max_tool_count": 1,
+  "rollback_required": true,
+  "replay_required": true
+}

@@ -1,0 +1,10 @@
+{
+  "version": "v1.phase4a",
+  "client_id": "string",
+  "run_id": "string",
+  "last_seen_seq": "integer",
+  "reconnect_at": "ISO-8601",
+  "missed_events": "integer",
+  "replayed_events": "integer",
+  "final_cursor": "integer"
+}

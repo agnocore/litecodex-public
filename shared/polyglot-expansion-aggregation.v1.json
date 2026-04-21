@@ -1,0 +1,14 @@
+{
+  "version": "v1.polyglot-expansion-aggregation",
+  "fields": [
+    "completed_packs",
+    "blocked_packs",
+    "deferred_packs",
+    "unique_blocker"
+  ],
+  "unique_blocker_rule": "only_when_blocked_packs_count_is_one",
+  "deferred_pack_rule": "non_blocking_pack_not_ready_enters_deferred_packs",
+  "blocked_pack_rule": "blocking_pack_not_ready_enters_blocked_packs",
+  "readiness_rule": "ready_when_blocked_packs_empty_and_required_matrix_checks_pass",
+  "final_status": "enabled"
+}

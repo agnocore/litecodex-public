@@ -1,0 +1,22 @@
+{
+  "version": "v1.flutter-host-boundary",
+  "pack_id": "crossend.flutter_web",
+  "boundary_policy": {
+    "primary_scope": "flutter_web",
+    "desktop_scope": "host_capability_guarded",
+    "desktop_blocking": false,
+    "defer_when_unsupported": true
+  },
+  "host_capability_checks": [
+    "flutter_sdk",
+    "dart_sdk",
+    "windows_desktop_requirements"
+  ],
+  "result_classes": [
+    "ready_web_only",
+    "ready_web_desktop",
+    "deferred_host_blocked",
+    "failed_controlled"
+  ],
+  "final_status": "enabled"
+}

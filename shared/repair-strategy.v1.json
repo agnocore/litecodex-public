@@ -1,0 +1,82 @@
+{
+  "version": "v1.phase3d",
+  "strategies": [
+    {
+      "id": "file_patch",
+      "description": "Planner-driven workspace patch with proposal, policy check, apply, verify retry, and rollback on failed retry.",
+      "file_patch_flow": [
+        "repair.planner.started",
+        "repair.candidate_files.selected",
+        "patch.proposal.created",
+        "patch.policy.checked",
+        "rollback.snapshot.created",
+        "patch.applied",
+        "verify.retry.scheduled",
+        "verify.passed|verify.controlled_failed",
+        "rollback.applied (if retry failed)"
+      ]
+    },
+    {
+      "id": "dependency_install_suggestion",
+      "description": "Generate install proposal, enforce install policy, execute controlled project-local install, then verify retry."
+    },
+    {
+      "id": "command_adjustment",
+      "description": "Generate adjusted command/cwd proposal, enforce command policy, apply, then verify retry."
+    },
+    {
+      "id": "auth_required_redirect",
+      "description": "Redirect to auth broker when failure indicates missing capability."
+    },
+    {
+      "id": "tool_install_required",
+      "description": "Emit adapter.install.required; stop controlled."
+    },
+    {
+      "id": "stop_and_report",
+      "description": "Do not retry; mark controlled failed with evidence."
+    }
+  ],
+  "selection_rules": [
+    {
+      "failure_class": "syntax_error",
+      "selected_strategy": "file_patch",
+      "retryable": true
+    },
+    {
+      "failure_class": "test_assertion_failure",
+      "selected_strategy": "file_patch",
+      "retryable": true
+    },
+    {
+      "failure_class": "command_not_found",
+      "selected_strategy": "tool_install_required",
+      "retryable": false
+    },
+    {
+      "failure_class": "command_misconfigured",
+      "selected_strategy": "command_adjustment",
+      "retryable": true
+    },
+    {
+      "failure_class": "dependency_missing",
+      "selected_strategy": "dependency_install_suggestion",
+      "retryable": true
+    },
+    {
+      "failure_class": "permission_denied",
+      "selected_strategy": "stop_and_report",
+      "retryable": false
+    },
+    {
+      "failure_class": "timeout",
+      "selected_strategy": "stop_and_report",
+      "retryable": false
+    },
+    {
+      "failure_class": "unknown_failure",
+      "selected_strategy": "stop_and_report",
+      "retryable": false
+    }
+  ]
+}

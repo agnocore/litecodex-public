@@ -1,0 +1,11 @@
+{
+  "version": "v1.browser-profile-binding.challenge-response",
+  "browser_profile_id": "local_generated_uuid",
+  "keypair_mode": "non_exportable",
+  "challenge_response_required": true,
+  "profile_storage_mode": "indexeddb_profile_local",
+  "origin_policy": "loopback_only",
+  "loopback_only": true,
+  "cross_browser_share": false,
+  "final_status": "active | cleared"
+}

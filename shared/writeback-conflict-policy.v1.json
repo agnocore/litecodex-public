@@ -1,0 +1,17 @@
+{
+  "version": "v1.phase6c",
+  "conflict_types": [
+    "hash_mismatch",
+    "path_forbidden",
+    "diff_binding_mismatch",
+    "candidate_missing"
+  ],
+  "reject_conditions": [
+    "current_hash_not_equal_baseline",
+    "candidate_path_not_allowed",
+    "before_hash_not_equal_declared_baseline"
+  ],
+  "retry_allowed": false,
+  "fallback_allowed": false,
+  "final_status": "rejected | failed_controlled"
+}

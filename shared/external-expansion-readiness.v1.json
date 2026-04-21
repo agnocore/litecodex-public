@@ -1,0 +1,28 @@
+{
+  "version": "v1.external-expansion-readiness",
+  "same_host_real_retention_required": true,
+  "required_dimensions": [
+    "runner_registry",
+    "runner_job_protocol",
+    "runner_artifact_sync",
+    "runner_failure_classification",
+    "android_toolchain_fulfillment",
+    "android_redetect",
+    "android_build_verify",
+    "android_lane",
+    "apple_boundary",
+    "store_boundary"
+  ],
+  "ready_requires": [
+    "same_host_real_retained",
+    "external_runner_plane_ready",
+    "android_release_ready",
+    "apple_boundary_frozen",
+    "store_boundary_frozen"
+  ],
+  "allow_non_blocking_deferred": [
+    "apple_release_execution",
+    "store_release_execution"
+  ],
+  "final_status": "enabled"
+}

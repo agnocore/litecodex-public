@@ -1,0 +1,17 @@
+{
+  "version": "v1.foundation-final-closeout",
+  "terminal_trace_missing": {
+    "policy": "legacy_exempt_nonblocking",
+    "rationale": "Historical runs created before foundation closeout may miss terminal trace events due to earlier state handling; they are exempt from frontend-entry blocking criteria.",
+    "exempt_run_ids": [
+      "run_1776389590178_a99d5d4d",
+      "run_1776389962136_064b1ba5",
+      "run_1776390183220_2df5fa5b",
+      "run_1776390460390_1c35703e",
+      "run_1776390664456_613155d3",
+      "run_1776400431632_e618330b",
+      "run_1776448451956_aab2fd5f",
+      "run_1776504986137_3af9d678"
+    ]
+  }
+}

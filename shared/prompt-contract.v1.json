@@ -1,0 +1,19 @@
+{
+  "version": "prompt-contract.v1",
+  "contract_id": "litecodex.prompt-contract-v1",
+  "path": "contracts/prompt-contract-v1.md",
+  "static_only": true,
+  "dynamic_state_source": [
+    "runs",
+    "events",
+    "auth_sessions",
+    "capability_grants"
+  ],
+  "rules": {
+    "no_dynamic_state_in_contract": true,
+    "no_secret_material_in_contract": true,
+    "auth_required_must_block_step": true,
+    "verification_required_for_external_actions": true,
+    "resume_original_step_after_verified": true
+  }
+}

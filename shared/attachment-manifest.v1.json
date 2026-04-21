@@ -1,0 +1,35 @@
+{
+  "version": "v1.foundation-closeout",
+  "manifest_scope": "run_or_session",
+  "storage_policy": {
+    "preferred_root": ".litecodex/tasks/<run-id>/attachments",
+    "fallback_root": "runs/<run-id>/artifacts/attachments",
+    "forbid_outside_litecodex_root": true
+  },
+  "source_types": ["upload", "paste", "screenshot", "legacy_screenshot"],
+  "ingest_channels": ["http_upload", "http_paste", "http_screenshot", "runtime_bridge"],
+  "entry_schema": {
+    "id": "attach_*",
+    "run_id": "string",
+    "step_id": "string|null",
+    "session_id": "string|null",
+    "source_type": "upload|paste|screenshot|legacy_screenshot",
+    "ingest_channel": "string",
+    "mime_type": "string|null",
+    "original_name": "string|null",
+    "artifact_path": "string",
+    "content_hash": "sha256_hex",
+    "size_bytes": "integer",
+    "metadata_json": "json",
+    "created_at": "ISO-8601"
+  },
+  "manifest_schema": {
+    "manifest_id": "attmanifest_*",
+    "run_id": "string",
+    "session_id": "string|null",
+    "storage_root": "string",
+    "manifest_path": "string",
+    "attachments": "array<entry_schema>",
+    "updated_at": "ISO-8601"
+  }
+}

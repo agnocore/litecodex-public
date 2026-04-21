@@ -1,0 +1,16 @@
+{
+  "version": "v1.foundation-final-closeout",
+  "routes": {
+    "status": "GET /entry/byo/openai/status",
+    "bind": "POST /entry/byo/openai/bind",
+    "clear": "POST /entry/byo/openai/clear",
+    "legacy": "/session/byo-key"
+  },
+  "response_schema": {
+    "provider": "openai",
+    "bound": "boolean",
+    "binding_scope": "session_scope|browser_profile_scope|machine_scope",
+    "validation_status": "valid|invalid|unknown",
+    "legacy_compatible": "boolean"
+  }
+}

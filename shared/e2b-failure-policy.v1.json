@@ -1,0 +1,9 @@
+{
+  "version": "v1.phase6b",
+  "create_timeout_policy": "classify_as_create_timeout_then_retry_up_to_limit",
+  "execute_failure_policy": "classify_nonzero_exit_and_apply_fallback_policy",
+  "artifact_partial_policy": "record_partial_and_continue_if_primary_receipt_exists",
+  "teardown_retry_policy": "retry_teardown_until_limit_then_failed_controlled",
+  "retry_limit": 2,
+  "final_status": "completed | failed_controlled"
+}

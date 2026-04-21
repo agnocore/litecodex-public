@@ -1,0 +1,30 @@
+{
+  "version": "v1.phase3e",
+  "allowed_roots": [
+    "{workspace_root}"
+  ],
+  "allowed_replay_types": [
+    "command_adjustment",
+    "dependency_install",
+    "verify_retry"
+  ],
+  "forbidden_commands": [
+    "npm install -g",
+    "pnpm add -g",
+    "yarn global",
+    "wrangler deploy",
+    "vercel deploy",
+    "rm -rf",
+    "del /s"
+  ],
+  "forbidden_write_paths": [
+    "../",
+    ".git/",
+    ".env",
+    ".env.local"
+  ],
+  "max_replay_seconds": 30,
+  "require_snapshot_for_install": true,
+  "require_sanitized_artifacts": true
+}
+

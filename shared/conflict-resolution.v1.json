@@ -1,0 +1,30 @@
+{
+  "version": "v1.conflict-resolution.closeout",
+  "fact_granularity": "claim_level",
+  "provenance_binding": {
+    "required": true,
+    "provenance_refs_field": "facts[].provenance_refs",
+    "citation_label_required": true
+  },
+  "conflict_detection_rules": {
+    "topic_grouping": "query_topic_or_primary_claim",
+    "value_extraction": ["semver_pattern", "numeric_pattern", "snippet_fallback"],
+    "conflict_when_distinct_values_count_gte": 2
+  },
+  "conflict_resolution_rules": {
+    "winner_priority": ["higher_confidence", "higher_domain_trust_tier", "higher_stale_score", "higher_source_score"],
+    "min_confidence_margin_for_resolved": 0.15,
+    "resolved_status": "resolved_conflict",
+    "unresolved_status": "unresolved_conflict"
+  },
+  "unresolved_rules": {
+    "emit_conflict_entry": true,
+    "allow_fact_with_low_confidence": false,
+    "require_gap_record": true
+  },
+  "insufficient_evidence_rules": {
+    "when_no_citation_eligible_sources": true,
+    "gap_reason": "insufficient_evidence"
+  },
+  "final_status": "frozen"
+}

@@ -1,0 +1,9 @@
+{
+  "version": "v1.deploy-command-normalization",
+  "shell_type": "powershell",
+  "quoting_policy": "safe_arg_array",
+  "line_split_policy": "single_command_per_attempt",
+  "cwd_normalization": "workspace_bound",
+  "command_adjustment_allowed_classes": ["invalid_flag", "cwd_misconfigured", "command_normalization"],
+  "final_status": "normalized | rejected"
+}

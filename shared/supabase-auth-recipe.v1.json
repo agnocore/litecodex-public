@@ -1,0 +1,31 @@
+{
+  "version": "v1",
+  "id": "supabase_token_input",
+  "platform": "supabase",
+  "mode": "token_input",
+  "challenge_renderer": "input_requested",
+  "challenge": {
+    "input_type": "token",
+    "input_hint": "Paste Supabase CLI PAT/access token in local UI only. Token is memory-only and never persisted.",
+    "memory_only": true
+  },
+  "verifier": {
+    "id": "supabase_token_verifier",
+    "primary_probe": "SUPABASE_ACCESS_TOKEN=<memory-token> supabase projects list --output json",
+    "secondary_probes": [
+      "supabase --version",
+      "supabase projects list"
+    ],
+    "verified_capability_mapping": [
+      "supabase.account.authenticated",
+      "supabase.project.read",
+      "supabase.org.read"
+    ],
+    "token_storage": "process-memory-only"
+  },
+  "scope": {
+    "scope_type": "workspace",
+    "scope_value_source": "repo_root"
+  },
+  "grant_ttl_seconds": 3600
+}

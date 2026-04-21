@@ -1,0 +1,75 @@
+{
+  "version": "v1.foundation-closeout",
+  "transport": {
+    "stream": "GET /events",
+    "replay": "GET /runs/:id/events?since_seq=<n>",
+    "ordering": "run_seq_ascending"
+  },
+  "frozen_subset": [
+    "run.created",
+    "step.requested",
+    "step.started",
+    "step.progressed",
+    "auth.required",
+    "auth.pending_user_action",
+    "auth.verified",
+    "step.resumed",
+    "attachment.ingested",
+    "compact.completed",
+    "verify.started",
+    "verify.completed",
+    "deploy.started",
+    "deploy.completed",
+    "answer.delta",
+    "answer.completed",
+    "run.completed",
+    "run.failed"
+  ],
+  "aliases": {
+    "auth.pending": ["auth.pending_user_action"],
+    "auth.resumed": ["step.resumed"],
+    "verify.completed": ["verify.passed", "verify.failed"],
+    "deploy.started": ["deploy.preflight.started", "deploy.command.started"],
+    "deploy.completed": ["deploy.command.completed", "deploy.retry.completed", "online.verification.completed"],
+    "run.completed": ["step.completed"],
+    "run.failed": ["step.failed", "step.failed_controlled"]
+  },
+  "event_schema": {
+    "run.created": {
+      "required_payload_keys": ["title"]
+    },
+    "step.requested": {
+      "required_payload_keys": ["step_id"]
+    },
+    "auth.required": {
+      "required_payload_keys": ["auth_session_id", "step_id", "required_capability"]
+    },
+    "auth.pending_user_action": {
+      "required_payload_keys": ["auth_session_id", "step_id", "status"]
+    },
+    "auth.verified": {
+      "required_payload_keys": ["auth_session_id", "step_id"]
+    },
+    "step.resumed": {
+      "required_payload_keys": ["step_id", "resume_reason"]
+    },
+    "attachment.ingested": {
+      "required_payload_keys": ["attachment_id", "run_id", "source_type", "artifact_path"]
+    },
+    "compact.completed": {
+      "required_payload_keys": ["compact_run_id", "artifact_path", "integrity_hash"]
+    },
+    "verify.started": {
+      "required_payload_keys": ["step_id", "command"]
+    },
+    "step.completed": {
+      "required_payload_keys": ["step_id"]
+    },
+    "step.failed": {
+      "required_payload_keys": ["step_id", "reason"]
+    },
+    "step.failed_controlled": {
+      "required_payload_keys": ["step_id", "reason"]
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "version": "v1",
+  "adapter_id": "git.adapter.v1",
+  "operations": {
+    "status": "git status --short",
+    "diff": "git diff -- <path>",
+    "branch": "git checkout -B <branch>",
+    "worktree": "git worktree add <path> <branch>"
+  },
+  "commit": {
+    "enabled_by_default": false
+  },
+  "destructive_actions": {
+    "enabled_by_default": false,
+    "blocked": ["git reset --hard", "git clean -fdx", "git branch -D", "git worktree remove"]
+  },
+  "evidence_policy": {
+    "status_summary_only": true,
+    "diff_patch_artifact_allowed": true
+  }
+}

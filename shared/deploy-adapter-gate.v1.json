@@ -1,0 +1,80 @@
+{
+  "version": "v1.phase5a",
+  "adapters": [
+    {
+      "adapter_id": "deploy.wrangler.gate.v1",
+      "required_capabilities": [
+        "wrangler.oauth.authenticated",
+        "cloudflare.account.read"
+      ],
+      "discovery_sources": [
+        "PATH",
+        "env",
+        "tool_registry"
+      ],
+      "allowed_readonly_actions": [
+        "version",
+        "whoami",
+        "auth_state"
+      ],
+      "forbidden_write_actions": [
+        "deploy",
+        "secret_write",
+        "dns_write"
+      ],
+      "approval_class": "readonly_preflight",
+      "policy_status": "allow_readonly_only"
+    },
+    {
+      "adapter_id": "deploy.vercel.gate.v1",
+      "required_capabilities": [
+        "vercel.account.authenticated",
+        "vercel.project.read"
+      ],
+      "discovery_sources": [
+        "PATH",
+        "env",
+        "tool_registry"
+      ],
+      "allowed_readonly_actions": [
+        "version",
+        "whoami",
+        "scope_read",
+        "project_read"
+      ],
+      "forbidden_write_actions": [
+        "deploy",
+        "project_write",
+        "domain_write",
+        "secret_write"
+      ],
+      "approval_class": "readonly_preflight",
+      "policy_status": "allow_readonly_only"
+    },
+    {
+      "adapter_id": "deploy.supabase.gate.v1",
+      "required_capabilities": [
+        "supabase.account.authenticated",
+        "supabase.project.read"
+      ],
+      "discovery_sources": [
+        "PATH",
+        "env",
+        "tool_registry"
+      ],
+      "allowed_readonly_actions": [
+        "version",
+        "auth_state",
+        "project_read"
+      ],
+      "forbidden_write_actions": [
+        "db_write",
+        "functions_deploy",
+        "secret_write",
+        "project_write"
+      ],
+      "approval_class": "readonly_preflight",
+      "policy_status": "allow_readonly_only"
+    }
+  ]
+}

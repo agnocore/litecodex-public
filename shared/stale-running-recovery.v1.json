@@ -1,0 +1,12 @@
+{
+  "version": "v1.phase4b",
+  "heartbeat_timeout_ms": 60000,
+  "run_id": "string",
+  "previous_status": "running",
+  "marker_status": "missing|resumable_marker|non_resumable_marker",
+  "heartbeat_status": "healthy|expired|missing",
+  "resumable": "boolean",
+  "recovery_action": "resume|mark_failed_controlled|mark_stale_controlled|skip",
+  "final_status": "running|completed|failed_controlled|stale_controlled",
+  "reason": "string"
+}

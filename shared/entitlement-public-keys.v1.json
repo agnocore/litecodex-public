@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "issuer": "litecodex-official",
+  "keys": [
+    {
+      "keyId": "ent-ed25519-2026-01",
+      "alg": "Ed25519",
+      "status": "active",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA3kCK0z3dS5RI7J+uZrcnUit5+4divPzPzIokjB41lps=\n-----END PUBLIC KEY-----\n"
+    }
+  ]
+}

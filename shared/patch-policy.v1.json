@@ -1,0 +1,34 @@
+{
+  "version": "v1.phase3c",
+  "allowed_root": "{workspace_root}",
+  "forbidden_paths": [
+    ".git/",
+    "node_modules/",
+    ".env",
+    ".env.local",
+    "secrets/"
+  ],
+  "max_files_changed": 2,
+  "max_hunks": 12,
+  "max_patch_bytes": 65536,
+  "allowed_extensions": [
+    ".js",
+    ".cjs",
+    ".mjs",
+    ".ts",
+    ".json"
+  ],
+  "destructive_change_policy": {
+    "allow_delete_file": false,
+    "allow_truncate_to_empty": false
+  },
+  "secret_redaction_policy": {
+    "enabled": true,
+    "redact_keys": [
+      "OPENAI_API_KEY",
+      "SUPABASE_ACCESS_TOKEN",
+      "VERCEL_TOKEN",
+      "CLOUDFLARE_API_TOKEN"
+    ]
+  }
+}

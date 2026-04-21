@@ -1,0 +1,11 @@
+{
+  "version": "v1.task-storage-root",
+  "run_id": "string",
+  "working_root": "absolute_path",
+  "artifact_root": ".litecodex/tasks/<run-id>/artifacts",
+  "scratch_root": ".litecodex/tasks/<run-id>/scratch",
+  "task_root": ".litecodex/tasks/<run-id>",
+  "auto_create_policy": "mkdir_if_missing",
+  "cleanup_policy": "manual_or_post_run_safe_cleanup",
+  "final_status": "created | rejected"
+}

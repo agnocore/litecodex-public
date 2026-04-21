@@ -1,0 +1,49 @@
+{
+  "version": "v1.polyglot-expansion-matrix",
+  "min_ready_count": 7,
+  "packs": [
+    {
+      "pack_id": "backend.rust_cargo",
+      "representative_task_id": "rust_representative",
+      "blocking_if_not_ready": true
+    },
+    {
+      "pack_id": "infra.terraform_cli",
+      "representative_task_id": "terraform_representative",
+      "blocking_if_not_ready": true
+    },
+    {
+      "pack_id": "config.yaml_schema",
+      "representative_task_id": "yaml_representative",
+      "blocking_if_not_ready": true
+    },
+    {
+      "pack_id": "data.sql_migration",
+      "representative_task_id": "sql_representative",
+      "blocking_if_not_ready": true
+    },
+    {
+      "pack_id": "backend.kotlin_jvm",
+      "representative_task_id": "kotlin_representative",
+      "blocking_if_not_ready": true
+    },
+    {
+      "pack_id": "backend.swift_windows",
+      "representative_task_id": "swift_windows_representative",
+      "blocking_if_not_ready": false,
+      "host_boundary": "windows_swift_toolchain_optional_until_host_support"
+    },
+    {
+      "pack_id": "crossend.flutter_web",
+      "representative_task_id": "flutter_web_representative",
+      "blocking_if_not_ready": true
+    },
+    {
+      "pack_id": "crossend.flutter_desktop_host_blocked",
+      "representative_task_id": "",
+      "blocking_if_not_ready": false,
+      "host_boundary": "flutter_desktop_host_blocked_until_prerequisites_met"
+    }
+  ],
+  "final_status": "enabled"
+}

@@ -1,0 +1,36 @@
+{
+  "version": "v1.phase5b-closeout",
+  "playwright_cli_required": true,
+  "runtime_profile_ref": "playwright-runtime-profile.v1.json",
+  "supported_actions": [
+    "open_page",
+    "wait_selector",
+    "extract_text",
+    "click_safe",
+    "fill_safe",
+    "navigate_local_route",
+    "screenshot",
+    "timeout_handled",
+    "popup_handled"
+  ],
+  "allowed_target_types": ["file://", "localhost", "fixture_local"],
+  "forbidden_target_types": ["external_remote", "remote_dashboard", "production_console"],
+  "timeout_policy": {
+    "default_timeout_ms": 4000,
+    "on_timeout": "controlled_fail_or_handled_by_case_policy"
+  },
+  "popup_policy": {
+    "allow_local_popup_simulation": true,
+    "block_remote_popup_navigation": true
+  },
+  "redirect_policy": {
+    "allow_local_redirect_only": true,
+    "forbid_cross_origin_redirect": true
+  },
+  "blocked_actions": ["upload_file", "download_file", "unsafe_click"],
+  "evidence_policy": {
+    "store_action_summary_only": true,
+    "store_screenshot_path": true
+  },
+  "final_status": "ready|blocked"
+}

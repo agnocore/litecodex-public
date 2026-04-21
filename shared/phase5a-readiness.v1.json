@@ -1,0 +1,11 @@
+{
+  "version": "v1.phase5a",
+  "browser_lane_ready": "boolean",
+  "deploy_adapter_gate_ready": "boolean",
+  "phase5a_ready": "boolean",
+  "phase5b_ready": "boolean",
+  "blocked_modules": "string[]",
+  "allowed_inputs": "string[]",
+  "forbidden_actions": "string[]",
+  "evidence_root": "string"
+}

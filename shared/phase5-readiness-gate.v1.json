@@ -1,0 +1,22 @@
+{
+  "version": "v1.phase4d",
+  "phase4_ready": "boolean",
+  "phase5_ready": "boolean",
+  "verified_modules": "string[]",
+  "blocked_modules": "string[]",
+  "allowed_phase5_inputs": [
+    "phase4_baseline_binding_verified",
+    "context_projection_artifacts",
+    "compact_mappings_verified",
+    "lineage_integrity_verified",
+    "phase4_closeout_results"
+  ],
+  "forbidden_phase5_actions": [
+    "browser_lane_real_deploy",
+    "production_dns_change",
+    "billing_or_team_mutation",
+    "non_fixture_workspace_write"
+  ],
+  "risks": "string[]",
+  "evidence_root": "string"
+}

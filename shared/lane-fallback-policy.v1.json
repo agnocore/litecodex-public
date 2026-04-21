@@ -1,0 +1,21 @@
+{
+  "version": "v1.phase6b",
+  "task_policies": [
+    {
+      "task_type": "fallback_isolated_verify_task",
+      "fallback_allowed": true,
+      "fallback_target_lane": "local",
+      "same_run_continue": true,
+      "controlled_fail_policy": "fallback_failure_to_failed_controlled",
+      "reason": "safe_verify_task_can_degrade_to_local"
+    },
+    {
+      "task_type": "strict_nonfallback_isolated_task",
+      "fallback_allowed": false,
+      "fallback_target_lane": "none",
+      "same_run_continue": false,
+      "controlled_fail_policy": "immediate_failed_controlled",
+      "reason": "isolation_required_no_local_degrade"
+    }
+  ]
+}

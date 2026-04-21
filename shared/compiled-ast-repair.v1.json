@@ -1,0 +1,26 @@
+{
+  "version": "v1.compiled-ast-repair",
+  "required_pipeline": [
+    "parser",
+    "structured_diff",
+    "safe_apply",
+    "verify_retry",
+    "receipt"
+  ],
+  "enabled_languages": [
+    {
+      "language": "rust",
+      "parser": "rust_function_parser_v1"
+    },
+    {
+      "language": "kotlin",
+      "parser": "kotlin_function_parser_v1"
+    }
+  ],
+  "safe_apply_policy": {
+    "baseline_hash_required": true,
+    "current_hash_required": true,
+    "conflict_reject": true
+  },
+  "final_status": "enabled"
+}

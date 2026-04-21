@@ -1,0 +1,41 @@
+{
+  "version": "v1",
+  "adapter_id": "shell.adapter.v1",
+  "command": "string",
+  "cwd": "absolute_path_within_workspace",
+  "timeout_ms": {
+    "default": 20000,
+    "max": 120000
+  },
+  "env_policy": {
+    "inherit_process_env": true,
+    "allow_inline_secret": false,
+    "redact_keys": ["OPENAI_API_KEY", "SUPABASE_ACCESS_TOKEN", "VERCEL_TOKEN", "CLOUDFLARE_API_TOKEN"]
+  },
+  "stdout_policy": {
+    "sqlite_summary_max_chars": 512,
+    "artifact_max_bytes": 65536
+  },
+  "stderr_policy": {
+    "sqlite_summary_max_chars": 512,
+    "artifact_max_bytes": 65536
+  },
+  "blocked_commands": [
+    "rm",
+    "rmdir",
+    "del",
+    "format",
+    "shutdown",
+    "reboot",
+    "wrangler deploy",
+    "vercel deploy",
+    "supabase start",
+    "supabase db push",
+    "supabase db reset",
+    "supabase db dump",
+    "supabase functions deploy",
+    "supabase secrets set",
+    "supabase secrets unset",
+    "git push"
+  ]
+}

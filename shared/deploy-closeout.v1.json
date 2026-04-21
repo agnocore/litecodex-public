@@ -1,0 +1,16 @@
+{
+  "version": "v1.deploy-closeout",
+  "provider": "vercel",
+  "deploy_mode": "preview_non_destructive",
+  "auth_mode": "auth_reuse_or_same_run_continue",
+  "preflight_required": true,
+  "deploy_command_policy": "single_provider_single_target",
+  "retry_policy": {
+    "max_retries": 1,
+    "allowed_failure_classes": ["command_normalization", "invalid_flag", "cwd_misconfigured"],
+    "non_retryable_classes": ["auth_missing", "provider_forbidden", "network_hard_fail"]
+  },
+  "verification_policy": "node_and_powershell_required_browser_optional",
+  "receipt_policy": "release_receipt_required",
+  "final_status": "completed | failed_controlled"
+}

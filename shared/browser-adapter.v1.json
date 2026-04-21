@@ -1,0 +1,30 @@
+{
+  "version": "v1.phase5a",
+  "adapter_id": "browser.adapter.v1",
+  "supported_actions": [
+    "open_page",
+    "wait_selector",
+    "extract_text",
+    "click_safe",
+    "screenshot"
+  ],
+  "discovery_requirements": [
+    "edge_browser|chrome_browser",
+    "node>=20",
+    "local_target_policy_check"
+  ],
+  "install_required_policy": {
+    "on_missing_playwright": "adapter.install.required_or_policy_reject",
+    "auto_install_playwright_browsers": false
+  },
+  "allowed_targets": [
+    "file://<litecodex>/workspaces/phase5a-fixture/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "forbidden_targets": [
+    "https://*",
+    "http://* (except localhost/127.0.0.1)"
+  ],
+  "risk_level": "medium"
+}
