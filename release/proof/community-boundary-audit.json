@@ -1,0 +1,81 @@
+{
+  "generatedAt": "2026-04-21T22:18:26.375Z",
+  "ok": true,
+  "host": "127.0.0.1",
+  "port": 43187,
+  "checks": {
+    "boundaryContractLoaded": true,
+    "restrictedPhaseRouteBlocked": true,
+    "restrictedCapabilityGrantRouteBlocked": true,
+    "baselineRunsRouteIntact": true
+  },
+  "steps": [
+    {
+      "step": "health",
+      "result": {
+        "statusCode": 200,
+        "json": {
+          "ok": true,
+          "service": "agent-host",
+          "bind": "127.0.0.1:43187",
+          "runs_root": "C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\runs",
+          "runtime_profile": "community_kernel",
+          "community_boundary": {
+            "contract": "v1",
+            "restricted_routes": 2,
+            "official_advanced_enabled": false
+          }
+        },
+        "raw": "{\n  \"ok\": true,\n  \"service\": \"agent-host\",\n  \"bind\": \"127.0.0.1:43187\",\n  \"runs_root\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\runs\",\n  \"runtime_profile\": \"community_kernel\",\n  \"community_boundary\": {\n    \"contract\": \"v1\",\n    \"restricted_routes\": 2,\n    \"official_advanced_enabled\": false\n  }\n}\n"
+      }
+    },
+    {
+      "step": "restricted_phase_route",
+      "result": {
+        "statusCode": 403,
+        "json": {
+          "ok": false,
+          "error": "community_edition_restricted",
+          "code": "COMMUNITY_EDITION_RESTRICTED",
+          "required_feature": "official_advanced",
+          "capability": "internal_or_official_workflow",
+          "reason": "internal_phase_and_closeout_routes_are_not_ce_public_surface",
+          "method": "POST",
+          "path": "/runs/phase4a-resume-reconnect-hydration",
+          "entitlement_status": "missing",
+          "entitlement_reason": "entitlement_missing"
+        },
+        "raw": "{\n  \"ok\": false,\n  \"error\": \"community_edition_restricted\",\n  \"code\": \"COMMUNITY_EDITION_RESTRICTED\",\n  \"required_feature\": \"official_advanced\",\n  \"capability\": \"internal_or_official_workflow\",\n  \"reason\": \"internal_phase_and_closeout_routes_are_not_ce_public_surface\",\n  \"method\": \"POST\",\n  \"path\": \"/runs/phase4a-resume-reconnect-hydration\",\n  \"entitlement_status\": \"missing\",\n  \"entitlement_reason\": \"entitlement_missing\"\n}\n"
+      }
+    },
+    {
+      "step": "restricted_capability_grants",
+      "result": {
+        "statusCode": 403,
+        "json": {
+          "ok": false,
+          "error": "community_edition_restricted",
+          "code": "COMMUNITY_EDITION_RESTRICTED",
+          "required_feature": "official_advanced",
+          "capability": "capability_grant_admin",
+          "reason": "grant_lifecycle_admin_endpoints_require_official_entitlement",
+          "method": "GET",
+          "path": "/capability-grants",
+          "entitlement_status": "missing",
+          "entitlement_reason": "entitlement_missing"
+        },
+        "raw": "{\n  \"ok\": false,\n  \"error\": \"community_edition_restricted\",\n  \"code\": \"COMMUNITY_EDITION_RESTRICTED\",\n  \"required_feature\": \"official_advanced\",\n  \"capability\": \"capability_grant_admin\",\n  \"reason\": \"grant_lifecycle_admin_endpoints_require_official_entitlement\",\n  \"method\": \"GET\",\n  \"path\": \"/capability-grants\",\n  \"entitlement_status\": \"missing\",\n  \"entitlement_reason\": \"entitlement_missing\"\n}\n"
+      }
+    },
+    {
+      "step": "allowed_runs_list",
+      "result": {
+        "statusCode": 200
+      }
+    }
+  ],
+  "serverLogs": {
+    "stdout": "[agent-host/community-kernel] listening on http://127.0.0.1:43187\n[agent-host/community-kernel] private providers authorized=false loaded=0",
+    "stderr": ""
+  }
+}

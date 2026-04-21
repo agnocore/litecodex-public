@@ -51,6 +51,10 @@ function runEntryCli(subcommand, envExtra = {}) {
   return runNode([entryCli, "entry", ...subcommand], envExtra);
 }
 
+function readText(filePath) {
+  return fs.readFileSync(filePath, "utf8");
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -127,10 +131,6 @@ async function main() {
   steps.push({ step: "build_community", result: buildCommunity });
   assert(buildCommunity.code === 0, "build_community_failed");
 
-  const buildPrivate = runNode([path.join("scripts", "build-private.mjs")]);
-  steps.push({ step: "build_private", result: buildPrivate });
-  assert(buildPrivate.code === 0, "build_private_failed");
-
   const boundaryAudit = runNode([path.join("scripts", "audit-community-boundary.mjs")]);
   steps.push({ step: "audit_community_boundary", result: boundaryAudit });
   assert(boundaryAudit.code === 0, "audit_community_boundary_failed");
@@ -145,6 +145,19 @@ async function main() {
     !communityFiles.some((file) => file.includes("release-api")) &&
     !communityFiles.some((file) => file.includes("private-plugin-registry"));
   assert(noPrivateLeak, "community_package_private_leak");
+
+  const serverEntry = path.join(repoRoot, "agent-host", "src", "server.mjs");
+  const kernelProviderLoader = path.join(repoRoot, "agent-host", "src", "kernel", "private-provider-loader.mjs");
+  const kernelCommunityRoutes = path.join(repoRoot, "agent-host", "src", "kernel", "community-routes.mjs");
+  const serverSizeBytes = fs.statSync(serverEntry).size;
+  const communityRouteSource = readText(kernelCommunityRoutes);
+  const monolithReduced = serverSizeBytes < 15000;
+  const advancedRouteLeak =
+    communityRouteSource.includes("/runs/phase") ||
+    communityRouteSource.replaceAll("community_edition_restricted", "").includes("/capability-grants");
+  assert(monolithReduced, "public_server_monolith_not_reduced");
+  assert(fs.existsSync(kernelProviderLoader), "private_provider_loader_missing");
+  assert(!advancedRouteLeak, "advanced_route_logic_leaked_in_public_kernel");
 
   const entitlementInvalidPath = path.join(entryStateDir, "entitlement.invalid.v1.json");
   const manifestInvalidPath = path.join(entryStateDir, "release-manifest.invalid.v1.json");
@@ -223,6 +236,9 @@ async function main() {
     ok: true,
     checks: {
       communityPackageNoPrivateLeak: noPrivateLeak,
+      publicServerMonolithReduced: monolithReduced,
+      privateProviderLoaderPresent: fs.existsSync(kernelProviderLoader),
+      advancedRouteLogicNotInCommunityKernel: !advancedRouteLeak,
       entryHealthContract: health.json,
       statusHasSecurity: Boolean(finalStatus.json?.security),
       entitlementVerifierIntegrated: true,

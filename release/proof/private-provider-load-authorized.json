@@ -1,0 +1,94 @@
+{
+  "generatedAt": "2026-04-21T22:16:10.588Z",
+  "ok": true,
+  "host": "127.0.0.1",
+  "port": 43188,
+  "provider_entry": "c:\\node\\GPT5-codex\\litecodex\\release\\out\\private\\private-control-plane\\private-capability-provider\\index.mjs",
+  "checks": {
+    "privateProviderLoaded": true,
+    "advancedWorkflowRouteAvailable": true,
+    "capabilityGrantAdminAvailable": true
+  },
+  "steps": [
+    {
+      "step": "health",
+      "result": {
+        "statusCode": 200,
+        "json": {
+          "ok": true,
+          "service": "agent-host",
+          "bind": "127.0.0.1:43188",
+          "runs_root": "C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\runs",
+          "runtime_profile": "community_kernel",
+          "community_boundary": {
+            "contract": "v1",
+            "restricted_routes": 2,
+            "official_advanced_enabled": true
+          }
+        },
+        "raw": "{\n  \"ok\": true,\n  \"service\": \"agent-host\",\n  \"bind\": \"127.0.0.1:43188\",\n  \"runs_root\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\runs\",\n  \"runtime_profile\": \"community_kernel\",\n  \"community_boundary\": {\n    \"contract\": \"v1\",\n    \"restricted_routes\": 2,\n    \"official_advanced_enabled\": true\n  }\n}\n"
+      }
+    },
+    {
+      "step": "advanced_workflow_route",
+      "result": {
+        "statusCode": 201,
+        "json": {
+          "ok": true,
+          "provider": "pcp-official-capability-provider-v1",
+          "workflow": "phase4a-resume-reconnect-hydration",
+          "run": {
+            "id": "run_1776809770577_b1411e74",
+            "title": "authorized advanced workflow proof",
+            "status": "completed",
+            "created_at": "2026-04-21T22:16:10.577Z",
+            "updated_at": "2026-04-21T22:16:10.581Z",
+            "source": "private_provider:phase4a-resume-reconnect-hydration",
+            "mode": "community",
+            "workflow": "phase4a-resume-reconnect-hydration",
+            "private_execution_unit": "pcp-official-capability-provider-v1",
+            "completed_at": "2026-04-21T22:16:10.581Z"
+          }
+        },
+        "raw": "{\n  \"ok\": true,\n  \"provider\": \"pcp-official-capability-provider-v1\",\n  \"workflow\": \"phase4a-resume-reconnect-hydration\",\n  \"run\": {\n    \"id\": \"run_1776809770577_b1411e74\",\n    \"title\": \"authorized advanced workflow proof\",\n    \"status\": \"completed\",\n    \"created_at\": \"2026-04-21T22:16:10.577Z\",\n    \"updated_at\": \"2026-04-21T22:16:10.581Z\",\n    \"source\": \"private_provider:phase4a-resume-reconnect-hydration\",\n    \"mode\": \"community\",\n    \"workflow\": \"phase4a-resume-reconnect-hydration\",\n    \"private_execution_unit\": \"pcp-official-capability-provider-v1\",\n    \"completed_at\": \"2026-04-21T22:16:10.581Z\"\n  }\n}\n"
+      }
+    },
+    {
+      "step": "capability_grants_list",
+      "result": {
+        "statusCode": 200,
+        "json": {
+          "capability_grants": []
+        },
+        "raw": "{\n  \"capability_grants\": []\n}\n"
+      }
+    },
+    {
+      "step": "capability_grant_create",
+      "result": {
+        "statusCode": 201,
+        "json": {
+          "ok": true,
+          "capability_grant": {
+            "id": "grant_1776809770590_617d7be9",
+            "capability_key": "official.workspace.write",
+            "scope_type": "workspace",
+            "scope_value": "proof-workspace",
+            "status": "granted",
+            "metadata": {
+              "provider": "pcp-official-capability-provider-v1",
+              "source": "private_provider"
+            },
+            "created_at": "2026-04-21T22:16:10.590Z",
+            "updated_at": "2026-04-21T22:16:10.590Z"
+          }
+        },
+        "raw": "{\n  \"ok\": true,\n  \"capability_grant\": {\n    \"id\": \"grant_1776809770590_617d7be9\",\n    \"capability_key\": \"official.workspace.write\",\n    \"scope_type\": \"workspace\",\n    \"scope_value\": \"proof-workspace\",\n    \"status\": \"granted\",\n    \"metadata\": {\n      \"provider\": \"pcp-official-capability-provider-v1\",\n      \"source\": \"private_provider\"\n    },\n    \"created_at\": \"2026-04-21T22:16:10.590Z\",\n    \"updated_at\": \"2026-04-21T22:16:10.590Z\"\n  }\n}\n"
+      }
+    }
+  ],
+  "logs": {
+    "stdout": "[agent-host/private-provider] loaded pcp-official-capability-provider-v1 from c:\\node\\GPT5-codex\\litecodex\\release\\out\\private\\private-control-plane\\private-capability-provider\\index.mjs\n[agent-host/community-kernel] listening on http://127.0.0.1:43188\n[agent-host/community-kernel] private providers authorized=true loaded=1",
+    "stderr": ""
+  }
+}

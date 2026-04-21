@@ -1,0 +1,21 @@
+{
+  "version": "v1",
+  "issuer": "litecodex-official",
+  "issuedAt": "2026-04-21T22:16:10.059Z",
+  "expiresAt": "2026-04-28T22:16:10.061Z",
+  "payload": {
+    "entitlementId": "ent_41ef7a8d-6d67-4984-b51e-27ee859d4984",
+    "subject": "proof-authorized-user",
+    "plan": "official",
+    "features": {
+      "community_core": true,
+      "official_advanced": true,
+      "official_plugin_channel": true
+    }
+  },
+  "signature": {
+    "alg": "Ed25519",
+    "keyId": "ent-proof-ed25519-2026-04",
+    "sig": "6WT6vqfV47aH5ejOonn77TRIqFZe9cXo1z_8fIFbUgJ0NhtxdjYkctnxxwJJllgYGH3bWkVXVHy0uuSJGuuYDA"
+  }
+}

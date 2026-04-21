@@ -1,0 +1,20 @@
+﻿{
+  "version": "v1",
+  "module_interface": {
+    "exports": [
+      "providerId",
+      "capabilities",
+      "registerPrivateProviderRoutes"
+    ],
+    "register_signature": "registerPrivateProviderRoutes({ addRoute, state, contracts, helpers, gate })"
+  },
+  "route_handler_signature": "async ({ req, res, url, pathname, params, match, state, contracts, providerGate, runtimeInfo, eventBus })",
+  "capability_keys": [
+    "official.workflow.phase_closeout",
+    "official.capability_grants.admin"
+  ],
+  "authorization": {
+    "entitlement_required_feature": "official_advanced",
+    "fail_mode": "closed"
+  }
+}

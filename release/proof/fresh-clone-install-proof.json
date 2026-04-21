@@ -1,0 +1,139 @@
+{
+  "generatedAt": "2026-04-21T22:15:35.203Z",
+  "ok": true,
+  "remoteRepo": "https://github.com/agnocore/litecodex-public.git",
+  "cloneDir": "release/fresh-clone-public-20260421221513180",
+  "checks": {
+    "noListenerReuse": true,
+    "entryInstallOk": true,
+    "healthContract": {
+      "ok": true,
+      "service": "litecodex-entry",
+      "listen": "127.0.0.1:43985"
+    },
+    "entryStatusOnline": true,
+    "entryStatusContractValid": true,
+    "statusEndpointOnline": true
+  },
+  "steps": [
+    {
+      "step": "graceful_stop_current_entry",
+      "result": {
+        "command": "C:\\Program Files\\nodejs\\node.exe entry\\cli.mjs entry stop",
+        "code": 0,
+        "stdout": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"stop\",\n  \"alreadyStopped\": true,\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"pid\": null,\n    \"startedAt\": \"2026-04-21T22:09:17.032Z\",\n    \"lastHealthCheck\": \"2026-04-21T22:15:12.255Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": \"STOPPED\",\n    \"mode\": \"community_edition\",\n    \"status\": \"stopped\",\n    \"serverPid\": null\n  }\n}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "step": "listeners_before_kill",
+      "result": []
+    },
+    {
+      "step": "kill_existing_listeners",
+      "result": []
+    },
+    {
+      "step": "listeners_after_kill",
+      "result": []
+    },
+    {
+      "step": "git_clone_public_repo",
+      "result": {
+        "command": "git clone --depth 1 https://github.com/agnocore/litecodex-public.git C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\release\\fresh-clone-public-20260421221513180",
+        "code": 0,
+        "stdout": "",
+        "stderr": "Cloning into 'C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\release\\fresh-clone-public-20260421221513180'...\n"
+      }
+    },
+    {
+      "step": "npm_install",
+      "result": {
+        "command": "cmd.exe /d /s /c npm install",
+        "code": 0,
+        "stdout": "\nup to date, audited 1 package in 769ms\n\nfound 0 vulnerabilities\n",
+        "stderr": ""
+      }
+    },
+    {
+      "step": "entry_install",
+      "result": {
+        "command": "cmd.exe /d /s /c npm run entry:install",
+        "code": 0,
+        "stdout": "\n> litecodex@1.0.0-community entry:install\n> node entry/cli.mjs entry install\n\n{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"action\": \"install\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"startupTask\": \"litecodex-entry\",\n  \"cli\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\release\\\\fresh-clone-public-20260421221513180\\\\entry\\\\cli.mjs\",\n  \"health\": {\n    \"ok\": true,\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\"\n  },\n  \"commandHint\": \"litecodex entry status\"\n}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "step": "entry_health",
+      "result": {
+        "statusCode": 200,
+        "body": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\"\n}\n",
+        "json": {
+          "ok": true,
+          "service": "litecodex-entry",
+          "listen": "127.0.0.1:43985"
+        }
+      }
+    },
+    {
+      "step": "entry_status",
+      "result": {
+        "command": "cmd.exe /d /s /c npm run entry:status",
+        "code": 0,
+        "stdout": "\n> litecodex@1.0.0-community entry:status\n> node entry/cli.mjs entry status\n\n{\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"status\": \"online\",\n  \"pid\": 20288,\n  \"pidRunning\": true,\n  \"listeners\": [\n    9676\n  ],\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"edition\": \"community\",\n    \"pid\": 20288,\n    \"startedAt\": \"2026-04-21T22:15:31.087Z\",\n    \"lastHealthCheck\": \"2026-04-21T22:15:31.512Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": null,\n    \"mode\": \"community_edition\",\n    \"status\": \"online\",\n    \"serverPid\": 9676,\n    \"security\": {\n      \"communityEdition\": true,\n      \"officialCapabilitiesEnabled\": false,\n      \"entitlement\": {\n        \"enabled\": false,\n        \"status\": \"missing\",\n        \"failClosed\": false,\n        \"reason\": \"entitlement_missing\",\n        \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\release\\\\fresh-clone-public-20260421221513180\\\\entry\\\\state\\\\entitlement.v1.json\",\n        \"verifiedAt\": \"2026-04-21T22:15:31.091Z\",\n        \"issuer\": \"litecodex-official\",\n        \"scope\": \"community\",\n        \"features\": {\n          \"community_core\": true,\n          \"official_advanced\": false,\n          \"official_plugin_channel\": false\n        }\n      },\n      \"updates\": {\n        \"enabled\": false,\n        \"status\": \"missing\",\n        \"failClosed\": false,\n        \"reason\": \"manifest_missing\",\n        \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\release\\\\fresh-clone-public-20260421221513180\\\\entry\\\\state\\\\release-manifest.v1.json\",\n        \"verifiedAt\": \"2026-04-21T22:15:31.092Z\",\n        \"issuer\": \"litecodex-official\",\n        \"artifactsVerified\": 0\n      }\n    }\n  },\n  \"remote\": {\n    \"reachable\": true,\n    \"statusCode\": 200,\n    \"contractValid\": true,\n    \"body\": {\n      \"service\": \"litecodex-entry\",\n      \"listen\": \"127.0.0.1:43985\",\n      \"edition\": \"community\",\n      \"pid\": 20288,\n      \"startedAt\": \"2026-04-21T22:15:31.087Z\",\n      \"lastHealthCheck\": \"2026-04-21T22:15:35.156Z\",\n      \"restartCount\": 0,\n      \"degraded\": false,\n      \"lastError\": null,\n      \"mode\": \"community_edition\",\n      \"status\": \"online\",\n      \"serverPid\": 9676,\n      \"security\": {\n        \"communityEdition\": true,\n        \"officialCapabilitiesEnabled\": false,\n        \"entitlement\": {\n          \"enabled\": false,\n          \"status\": \"missing\",\n          \"failClosed\": false,\n          \"reason\": \"entitlement_missing\",\n          \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\release\\\\fresh-clone-public-20260421221513180\\\\entry\\\\state\\\\entitlement.v1.json\",\n          \"verifiedAt\": \"2026-04-21T22:15:31.091Z\",\n          \"issuer\": \"litecodex-official\",\n          \"scope\": \"community\",\n          \"features\": {\n            \"community_core\": true,\n            \"official_advanced\": false,\n            \"official_plugin_channel\": false\n          }\n        },\n        \"updates\": {\n          \"enabled\": false,\n          \"status\": \"missing\",\n          \"failClosed\": false,\n          \"reason\": \"manifest_missing\",\n          \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\release\\\\fresh-clone-public-20260421221513180\\\\entry\\\\state\\\\release-manifest.v1.json\",\n          \"verifiedAt\": \"2026-04-21T22:15:31.092Z\",\n          \"issuer\": \"litecodex-official\",\n          \"artifactsVerified\": 0\n        }\n      }\n    }\n  }\n}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "step": "entry_status_endpoint",
+      "result": {
+        "statusCode": 200,
+        "body": "{\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"edition\": \"community\",\n  \"pid\": 20288,\n  \"startedAt\": \"2026-04-21T22:15:31.087Z\",\n  \"lastHealthCheck\": \"2026-04-21T22:15:35.202Z\",\n  \"restartCount\": 0,\n  \"degraded\": false,\n  \"lastError\": null,\n  \"mode\": \"community_edition\",\n  \"status\": \"online\",\n  \"serverPid\": 9676,\n  \"security\": {\n    \"communityEdition\": true,\n    \"officialCapabilitiesEnabled\": false,\n    \"entitlement\": {\n      \"enabled\": false,\n      \"status\": \"missing\",\n      \"failClosed\": false,\n      \"reason\": \"entitlement_missing\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\release\\\\fresh-clone-public-20260421221513180\\\\entry\\\\state\\\\entitlement.v1.json\",\n      \"verifiedAt\": \"2026-04-21T22:15:31.091Z\",\n      \"issuer\": \"litecodex-official\",\n      \"scope\": \"community\",\n      \"features\": {\n        \"community_core\": true,\n        \"official_advanced\": false,\n        \"official_plugin_channel\": false\n      }\n    },\n    \"updates\": {\n      \"enabled\": false,\n      \"status\": \"missing\",\n      \"failClosed\": false,\n      \"reason\": \"manifest_missing\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\release\\\\fresh-clone-public-20260421221513180\\\\entry\\\\state\\\\release-manifest.v1.json\",\n      \"verifiedAt\": \"2026-04-21T22:15:31.092Z\",\n      \"issuer\": \"litecodex-official\",\n      \"artifactsVerified\": 0\n    }\n  }\n}\n",
+        "json": {
+          "service": "litecodex-entry",
+          "listen": "127.0.0.1:43985",
+          "edition": "community",
+          "pid": 20288,
+          "startedAt": "2026-04-21T22:15:31.087Z",
+          "lastHealthCheck": "2026-04-21T22:15:35.202Z",
+          "restartCount": 0,
+          "degraded": false,
+          "lastError": null,
+          "mode": "community_edition",
+          "status": "online",
+          "serverPid": 9676,
+          "security": {
+            "communityEdition": true,
+            "officialCapabilitiesEnabled": false,
+            "entitlement": {
+              "enabled": false,
+              "status": "missing",
+              "failClosed": false,
+              "reason": "entitlement_missing",
+              "source": "C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\release\\fresh-clone-public-20260421221513180\\entry\\state\\entitlement.v1.json",
+              "verifiedAt": "2026-04-21T22:15:31.091Z",
+              "issuer": "litecodex-official",
+              "scope": "community",
+              "features": {
+                "community_core": true,
+                "official_advanced": false,
+                "official_plugin_channel": false
+              }
+            },
+            "updates": {
+              "enabled": false,
+              "status": "missing",
+              "failClosed": false,
+              "reason": "manifest_missing",
+              "source": "C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\release\\fresh-clone-public-20260421221513180\\entry\\state\\release-manifest.v1.json",
+              "verifiedAt": "2026-04-21T22:15:31.092Z",
+              "issuer": "litecodex-official",
+              "artifactsVerified": 0
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -11,11 +11,6 @@ const proofDir = path.join(repoRoot, "release", "proof");
 const proofFile = path.join(proofDir, "community-boundary-audit.json");
 const host = "127.0.0.1";
 const port = Number(process.env.LITECODEX_BOUNDARY_AUDIT_PORT || 43187);
-const agentHostDir = path.join(repoRoot, "agent-host");
-
-function npmExecutable() {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
-}
 
 function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -91,33 +86,8 @@ function assert(cond, code) {
   }
 }
 
-function ensureAgentHostDependencies(steps) {
-  const e2bMarker = path.join(agentHostDir, "node_modules", "e2b");
-  if (fs.existsSync(e2bMarker)) {
-    steps.push({ step: "agent_host_dependencies", result: { installed: true, source: "existing_node_modules" } });
-    return;
-  }
-  const install = spawnSync(npmExecutable(), ["install"], {
-    cwd: agentHostDir,
-    encoding: "utf8",
-    timeout: 240000
-  });
-  steps.push({
-    step: "agent_host_dependencies",
-    result: {
-      installed: install.status === 0,
-      source: "npm_install",
-      code: install.status,
-      stdout: install.stdout || "",
-      stderr: install.stderr || ""
-    }
-  });
-  assert(install.status === 0, "agent_host_dependency_install_failed");
-}
-
 async function main() {
   const steps = [];
-  ensureAgentHostDependencies(steps);
 
   const serverProc = spawn(process.execPath, [path.join("agent-host", "src", "server.mjs")], {
     cwd: repoRoot,

@@ -1,4 +1,7 @@
 {
+  "generatedAt": "2026-04-21T22:18:25.663Z",
+  "action": "build:community",
+  "ok": true,
   "include": [
     ".gitignore",
     "COMMUNITY_LICENSE.txt",
@@ -42,5 +45,13 @@
     "evidence/",
     "runs/",
     "tmp/"
-  ]
+  ],
+  "guard": {
+    "ok": true,
+    "fileCount": 257,
+    "pathViolations": [],
+    "contentViolations": []
+  },
+  "manifestFile": "release/out/community/community-package-manifest.json",
+  "outDir": "release/out/community"
 }

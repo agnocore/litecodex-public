@@ -11,6 +11,8 @@
     "entry:status": "node entry/cli.mjs entry status",
     "entry:open": "node entry/cli.mjs entry open",
     "audit:community:boundary": "node scripts/audit-community-boundary.mjs",
+    "proof:private-provider-load": "node scripts/proof-private-provider-load.mjs",
+    "proof:fresh-clone-install": "node scripts/proof-fresh-clone-install.mjs",
     "build:community": "node scripts/build-community.mjs",
     "build:private": "node scripts/build-private.mjs",
     "release:community:verify": "node scripts/release-community-verify.mjs"
