@@ -1,8 +1,12 @@
 {
   "include": [
+    ".gitignore",
     "COMMUNITY_LICENSE.txt",
+    "INSTALL.md",
     "NOTICE.md",
     "package.json",
+    "README.md",
+    "TRADEMARK_POLICY.md",
     "entry/cli.mjs",
     "entry/bin",
     "entry/service",

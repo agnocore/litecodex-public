@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildManifest, copyPath, resetDir, runLeakGuards, writeJson } from "./release-lib.mjs";
+import { buildManifest, copyPath, ensureDir, runLeakGuards, writeJson } from "./release-lib.mjs";
 
 const thisFile = fileURLToPath(import.meta.url);
 const scriptsDir = path.dirname(thisFile);
@@ -17,7 +17,11 @@ function main() {
   const include = Array.isArray(config.include) ? config.include : [];
   const deny = Array.isArray(config.denyPathContains) ? config.denyPathContains : [];
 
-  resetDir(outDir);
+  ensureDir(outDir);
+  for (const name of fs.readdirSync(outDir)) {
+    if (name === ".git") continue;
+    fs.rmSync(path.join(outDir, name), { recursive: true, force: true });
+  }
 
   for (const rel of include) {
     copyPath(repoRoot, outDir, rel);
@@ -59,4 +63,3 @@ try {
   process.stderr.write(`${JSON.stringify(failure, null, 2)}\n`);
   process.exit(1);
 }
-

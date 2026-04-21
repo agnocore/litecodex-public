@@ -44,6 +44,7 @@ export function listFilesRecursive(root) {
     const stat = fs.statSync(current);
     if (stat.isDirectory()) {
       for (const name of fs.readdirSync(current)) {
+        if (name === ".git") continue;
         stack.push(path.join(current, name));
       }
     } else {

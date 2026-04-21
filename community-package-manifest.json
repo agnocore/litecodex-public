@@ -1,16 +1,36 @@
 {
-  "generatedAt": "2026-04-21T19:06:19.127Z",
-  "fileCount": 242,
+  "generatedAt": "2026-04-21T19:33:01.612Z",
+  "fileCount": 246,
   "entries": [
+    {
+      "path": ".gitignore",
+      "size": 181,
+      "sha256": "bd47a02b16f2417e5b8b1f953f1aa79c6cf8332b5927da4845bb32cf9dee63aa"
+    },
     {
       "path": "COMMUNITY_LICENSE.txt",
       "size": 1160,
       "sha256": "cba3eed19dd6ca4def35c81b6f83dd7784be9e56b218e747656480883d8c59a4"
     },
     {
+      "path": "INSTALL.md",
+      "size": 800,
+      "sha256": "b6c5f7a885f8352ca759e21f5432e605ac37a0e1ee79e3a37eced289ed44a64a"
+    },
+    {
       "path": "NOTICE.md",
       "size": 257,
       "sha256": "43f9122c7a8344b3363f9eb54591a54f6ee7f74394c09dc2e077f17a2976386f"
+    },
+    {
+      "path": "README.md",
+      "size": 1115,
+      "sha256": "8cd3cbf69574712e997782fc7ec4f9ebacb48687e8b64c7fed7cb6aa9f0efe32"
+    },
+    {
+      "path": "TRADEMARK_POLICY.md",
+      "size": 387,
+      "sha256": "cc595552effbc698d58404aa896ba14972541bf6867c83736cd48838b42d8a60"
     },
     {
       "path": "agent-host/package-lock.json",
@@ -249,8 +269,8 @@
     },
     {
       "path": "release/community-whitelist.json",
-      "size": 846,
-      "sha256": "10b2bc1d16e1f55b157ca52d01dd1e60f3b5da1f780e62a74819ade8bb1334d0"
+      "size": 926,
+      "sha256": "e4ca3afc508cc7a4ddb402e41429d08ca8b0df54c2804019a8fa2627023f0e60"
     },
     {
       "path": "run-ledger/init.sql",
@@ -269,8 +289,8 @@
     },
     {
       "path": "scripts/build-community.mjs",
-      "size": 2045,
-      "sha256": "b1f2f6f0f5f4267be564917f567fd4a8a244ae089b4e4be3ef47adc34b4d47ff"
+      "size": 2206,
+      "sha256": "fdd2f85f93ba28754cdf7b91b9f4ebf211d88a6f086bcb3ca3a70b4256d52a7c"
     },
     {
       "path": "scripts/build-private.mjs",
@@ -284,8 +304,8 @@
     },
     {
       "path": "scripts/release-lib.mjs",
-      "size": 3280,
-      "sha256": "278367d3c3d297a9c4bf8c42836e713139c143770d1d221ac356bb94aa0b3ca2"
+      "size": 3319,
+      "sha256": "6c50e6bdcb5ff9d7bfb8117865088c9359d9feb48dc749c18a5af87fb4af17c0"
     },
     {
       "path": "shared/adapter-install-required.v1.json",
