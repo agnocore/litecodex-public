@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-21T22:18:25.663Z",
+  "generatedAt": "2026-04-22T00:40:34.418Z",
   "action": "build:community",
   "ok": true,
   "include": [
@@ -13,6 +13,7 @@
     "entry/cli.mjs",
     "entry/bin",
     "entry/service",
+    "entry/ui",
     "entry/windows",
     "agent-host/package.json",
     "agent-host/package-lock.json",
@@ -29,6 +30,7 @@
     "scripts/build-private.mjs",
     "scripts/audit-community-boundary.mjs",
     "scripts/proof-fresh-clone-install.mjs",
+    "scripts/proof-entry-frontend-productization.mjs",
     "scripts/proof-private-provider-load.mjs",
     "scripts/release-community-verify.mjs",
     "scripts/release-lib.mjs",
@@ -48,7 +50,7 @@
   ],
   "guard": {
     "ok": true,
-    "fileCount": 257,
+    "fileCount": 261,
     "pathViolations": [],
     "contentViolations": []
   },

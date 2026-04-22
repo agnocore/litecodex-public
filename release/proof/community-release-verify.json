@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-21T22:18:39.662Z",
+  "generatedAt": "2026-04-22T00:40:44.655Z",
   "ok": true,
   "checks": {
     "communityPackageNoPrivateLeak": true,
@@ -20,7 +20,7 @@
   },
   "dryRun": {
     "communityOutDir": "release/out/community",
-    "communityFileCount": 258
+    "communityFileCount": 262
   },
   "steps": [
     {
@@ -28,7 +28,7 @@
       "result": {
         "command": "node scripts\\build-community.mjs",
         "code": 0,
-        "stdout": "{\n  \"generatedAt\": \"2026-04-21T22:18:25.663Z\",\n  \"action\": \"build:community\",\n  \"ok\": true,\n  \"include\": [\n    \".gitignore\",\n    \"COMMUNITY_LICENSE.txt\",\n    \"INSTALL.md\",\n    \"NOTICE.md\",\n    \"package.json\",\n    \"README.md\",\n    \"TRADEMARK_POLICY.md\",\n    \"entry/cli.mjs\",\n    \"entry/bin\",\n    \"entry/service\",\n    \"entry/windows\",\n    \"agent-host/package.json\",\n    \"agent-host/package-lock.json\",\n    \"agent-host/src\",\n    \"local-ui/package.json\",\n    \"local-ui/src\",\n    \"local-ui/public\",\n    \"shared\",\n    \"contracts\",\n    \"docs\",\n    \"run-ledger/init.sql\",\n    \"run-ledger/migrations\",\n    \"scripts/build-community.mjs\",\n    \"scripts/build-private.mjs\",\n    \"scripts/audit-community-boundary.mjs\",\n    \"scripts/proof-fresh-clone-install.mjs\",\n    \"scripts/proof-private-provider-load.mjs\",\n    \"scripts/release-community-verify.mjs\",\n    \"scripts/release-lib.mjs\",\n    \"release/community-whitelist.json\"\n  ],\n  \"denyPathContains\": [\n    \"private-control-plane\",\n    \"internal-admin-console\",\n    \"private-plugin-registry\",\n    \"license-api\",\n    \"release-api\",\n    \"entry/logs\",\n    \"entry/state\",\n    \"evidence/\",\n    \"runs/\",\n    \"tmp/\"\n  ],\n  \"guard\": {\n    \"ok\": true,\n    \"fileCount\": 257,\n    \"pathViolations\": [],\n    \"contentViolations\": []\n  },\n  \"manifestFile\": \"release/out/community/community-package-manifest.json\",\n  \"outDir\": \"release/out/community\"\n}\n",
+        "stdout": "{\n  \"generatedAt\": \"2026-04-22T00:40:34.418Z\",\n  \"action\": \"build:community\",\n  \"ok\": true,\n  \"include\": [\n    \".gitignore\",\n    \"COMMUNITY_LICENSE.txt\",\n    \"INSTALL.md\",\n    \"NOTICE.md\",\n    \"package.json\",\n    \"README.md\",\n    \"TRADEMARK_POLICY.md\",\n    \"entry/cli.mjs\",\n    \"entry/bin\",\n    \"entry/service\",\n    \"entry/ui\",\n    \"entry/windows\",\n    \"agent-host/package.json\",\n    \"agent-host/package-lock.json\",\n    \"agent-host/src\",\n    \"local-ui/package.json\",\n    \"local-ui/src\",\n    \"local-ui/public\",\n    \"shared\",\n    \"contracts\",\n    \"docs\",\n    \"run-ledger/init.sql\",\n    \"run-ledger/migrations\",\n    \"scripts/build-community.mjs\",\n    \"scripts/build-private.mjs\",\n    \"scripts/audit-community-boundary.mjs\",\n    \"scripts/proof-fresh-clone-install.mjs\",\n    \"scripts/proof-entry-frontend-productization.mjs\",\n    \"scripts/proof-private-provider-load.mjs\",\n    \"scripts/release-community-verify.mjs\",\n    \"scripts/release-lib.mjs\",\n    \"release/community-whitelist.json\"\n  ],\n  \"denyPathContains\": [\n    \"private-control-plane\",\n    \"internal-admin-console\",\n    \"private-plugin-registry\",\n    \"license-api\",\n    \"release-api\",\n    \"entry/logs\",\n    \"entry/state\",\n    \"evidence/\",\n    \"runs/\",\n    \"tmp/\"\n  ],\n  \"guard\": {\n    \"ok\": true,\n    \"fileCount\": 261,\n    \"pathViolations\": [],\n    \"contentViolations\": []\n  },\n  \"manifestFile\": \"release/out/community/community-package-manifest.json\",\n  \"outDir\": \"release/out/community\"\n}\n",
         "stderr": ""
       }
     },
@@ -37,7 +37,7 @@
       "result": {
         "command": "node scripts\\audit-community-boundary.mjs",
         "code": 0,
-        "stdout": "{\n  \"generatedAt\": \"2026-04-21T22:18:26.375Z\",\n  \"ok\": true,\n  \"host\": \"127.0.0.1\",\n  \"port\": 43187,\n  \"checks\": {\n    \"boundaryContractLoaded\": true,\n    \"restrictedPhaseRouteBlocked\": true,\n    \"restrictedCapabilityGrantRouteBlocked\": true,\n    \"baselineRunsRouteIntact\": true\n  },\n  \"steps\": [\n    {\n      \"step\": \"health\",\n      \"result\": {\n        \"statusCode\": 200,\n        \"json\": {\n          \"ok\": true,\n          \"service\": \"agent-host\",\n          \"bind\": \"127.0.0.1:43187\",\n          \"runs_root\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\runs\",\n          \"runtime_profile\": \"community_kernel\",\n          \"community_boundary\": {\n            \"contract\": \"v1\",\n            \"restricted_routes\": 2,\n            \"official_advanced_enabled\": false\n          }\n        },\n        \"raw\": \"{\\n  \\\"ok\\\": true,\\n  \\\"service\\\": \\\"agent-host\\\",\\n  \\\"bind\\\": \\\"127.0.0.1:43187\\\",\\n  \\\"runs_root\\\": \\\"C:\\\\\\\\node\\\\\\\\GPT5-codex\\\\\\\\litecodex\\\\\\\\release\\\\\\\\out\\\\\\\\community\\\\\\\\runs\\\",\\n  \\\"runtime_profile\\\": \\\"community_kernel\\\",\\n  \\\"community_boundary\\\": {\\n    \\\"contract\\\": \\\"v1\\\",\\n    \\\"restricted_routes\\\": 2,\\n    \\\"official_advanced_enabled\\\": false\\n  }\\n}\\n\"\n      }\n    },\n    {\n      \"step\": \"restricted_phase_route\",\n      \"result\": {\n        \"statusCode\": 403,\n        \"json\": {\n          \"ok\": false,\n          \"error\": \"community_edition_restricted\",\n          \"code\": \"COMMUNITY_EDITION_RESTRICTED\",\n          \"required_feature\": \"official_advanced\",\n          \"capability\": \"internal_or_official_workflow\",\n          \"reason\": \"internal_phase_and_closeout_routes_are_not_ce_public_surface\",\n          \"method\": \"POST\",\n          \"path\": \"/runs/phase4a-resume-reconnect-hydration\",\n          \"entitlement_status\": \"missing\",\n          \"entitlement_reason\": \"entitlement_missing\"\n        },\n        \"raw\": \"{\\n  \\\"ok\\\": false,\\n  \\\"error\\\": \\\"community_edition_restricted\\\",\\n  \\\"code\\\": \\\"COMMUNITY_EDITION_RESTRICTED\\\",\\n  \\\"required_feature\\\": \\\"official_advanced\\\",\\n  \\\"capability\\\": \\\"internal_or_official_workflow\\\",\\n  \\\"reason\\\": \\\"internal_phase_and_closeout_routes_are_not_ce_public_surface\\\",\\n  \\\"method\\\": \\\"POST\\\",\\n  \\\"path\\\": \\\"/runs/phase4a-resume-reconnect-hydration\\\",\\n  \\\"entitlement_status\\\": \\\"missing\\\",\\n  \\\"entitlement_reason\\\": \\\"entitlement_missing\\\"\\n}\\n\"\n      }\n    },\n    {\n      \"step\": \"restricted_capability_grants\",\n      \"result\": {\n        \"statusCode\": 403,\n        \"json\": {\n          \"ok\": false,\n          \"error\": \"community_edition_restricted\",\n          \"code\": \"COMMUNITY_EDITION_RESTRICTED\",\n          \"required_feature\": \"official_advanced\",\n          \"capability\": \"capability_grant_admin\",\n          \"reason\": \"grant_lifecycle_admin_endpoints_require_official_entitlement\",\n          \"method\": \"GET\",\n          \"path\": \"/capability-grants\",\n          \"entitlement_status\": \"missing\",\n          \"entitlement_reason\": \"entitlement_missing\"\n        },\n        \"raw\": \"{\\n  \\\"ok\\\": false,\\n  \\\"error\\\": \\\"community_edition_restricted\\\",\\n  \\\"code\\\": \\\"COMMUNITY_EDITION_RESTRICTED\\\",\\n  \\\"required_feature\\\": \\\"official_advanced\\\",\\n  \\\"capability\\\": \\\"capability_grant_admin\\\",\\n  \\\"reason\\\": \\\"grant_lifecycle_admin_endpoints_require_official_entitlement\\\",\\n  \\\"method\\\": \\\"GET\\\",\\n  \\\"path\\\": \\\"/capability-grants\\\",\\n  \\\"entitlement_status\\\": \\\"missing\\\",\\n  \\\"entitlement_reason\\\": \\\"entitlement_missing\\\"\\n}\\n\"\n      }\n    },\n    {\n      \"step\": \"allowed_runs_list\",\n      \"result\": {\n        \"statusCode\": 200\n      }\n    }\n  ],\n  \"serverLogs\": {\n    \"stdout\": \"[agent-host/community-kernel] listening on http://127.0.0.1:43187\\n[agent-host/community-kernel] private providers authorized=false loaded=0\",\n    \"stderr\": \"\"\n  }\n}\n",
+        "stdout": "{\n  \"generatedAt\": \"2026-04-22T00:40:35.071Z\",\n  \"ok\": true,\n  \"host\": \"127.0.0.1\",\n  \"port\": 43187,\n  \"checks\": {\n    \"boundaryContractLoaded\": true,\n    \"restrictedPhaseRouteBlocked\": true,\n    \"restrictedCapabilityGrantRouteBlocked\": true,\n    \"baselineRunsRouteIntact\": true\n  },\n  \"steps\": [\n    {\n      \"step\": \"health\",\n      \"result\": {\n        \"statusCode\": 200,\n        \"json\": {\n          \"ok\": true,\n          \"service\": \"agent-host\",\n          \"bind\": \"127.0.0.1:43187\",\n          \"runs_root\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\runs\",\n          \"runtime_profile\": \"community_kernel\",\n          \"community_boundary\": {\n            \"contract\": \"v1\",\n            \"restricted_routes\": 2,\n            \"official_advanced_enabled\": false\n          }\n        },\n        \"raw\": \"{\\n  \\\"ok\\\": true,\\n  \\\"service\\\": \\\"agent-host\\\",\\n  \\\"bind\\\": \\\"127.0.0.1:43187\\\",\\n  \\\"runs_root\\\": \\\"C:\\\\\\\\node\\\\\\\\GPT5-codex\\\\\\\\litecodex\\\\\\\\release\\\\\\\\out\\\\\\\\community\\\\\\\\runs\\\",\\n  \\\"runtime_profile\\\": \\\"community_kernel\\\",\\n  \\\"community_boundary\\\": {\\n    \\\"contract\\\": \\\"v1\\\",\\n    \\\"restricted_routes\\\": 2,\\n    \\\"official_advanced_enabled\\\": false\\n  }\\n}\\n\"\n      }\n    },\n    {\n      \"step\": \"restricted_phase_route\",\n      \"result\": {\n        \"statusCode\": 403,\n        \"json\": {\n          \"ok\": false,\n          \"error\": \"community_edition_restricted\",\n          \"code\": \"COMMUNITY_EDITION_RESTRICTED\",\n          \"required_feature\": \"official_advanced\",\n          \"capability\": \"internal_or_official_workflow\",\n          \"reason\": \"internal_phase_and_closeout_routes_are_not_ce_public_surface\",\n          \"method\": \"POST\",\n          \"path\": \"/runs/phase4a-resume-reconnect-hydration\",\n          \"entitlement_status\": \"missing\",\n          \"entitlement_reason\": \"entitlement_missing\"\n        },\n        \"raw\": \"{\\n  \\\"ok\\\": false,\\n  \\\"error\\\": \\\"community_edition_restricted\\\",\\n  \\\"code\\\": \\\"COMMUNITY_EDITION_RESTRICTED\\\",\\n  \\\"required_feature\\\": \\\"official_advanced\\\",\\n  \\\"capability\\\": \\\"internal_or_official_workflow\\\",\\n  \\\"reason\\\": \\\"internal_phase_and_closeout_routes_are_not_ce_public_surface\\\",\\n  \\\"method\\\": \\\"POST\\\",\\n  \\\"path\\\": \\\"/runs/phase4a-resume-reconnect-hydration\\\",\\n  \\\"entitlement_status\\\": \\\"missing\\\",\\n  \\\"entitlement_reason\\\": \\\"entitlement_missing\\\"\\n}\\n\"\n      }\n    },\n    {\n      \"step\": \"restricted_capability_grants\",\n      \"result\": {\n        \"statusCode\": 403,\n        \"json\": {\n          \"ok\": false,\n          \"error\": \"community_edition_restricted\",\n          \"code\": \"COMMUNITY_EDITION_RESTRICTED\",\n          \"required_feature\": \"official_advanced\",\n          \"capability\": \"capability_grant_admin\",\n          \"reason\": \"grant_lifecycle_admin_endpoints_require_official_entitlement\",\n          \"method\": \"GET\",\n          \"path\": \"/capability-grants\",\n          \"entitlement_status\": \"missing\",\n          \"entitlement_reason\": \"entitlement_missing\"\n        },\n        \"raw\": \"{\\n  \\\"ok\\\": false,\\n  \\\"error\\\": \\\"community_edition_restricted\\\",\\n  \\\"code\\\": \\\"COMMUNITY_EDITION_RESTRICTED\\\",\\n  \\\"required_feature\\\": \\\"official_advanced\\\",\\n  \\\"capability\\\": \\\"capability_grant_admin\\\",\\n  \\\"reason\\\": \\\"grant_lifecycle_admin_endpoints_require_official_entitlement\\\",\\n  \\\"method\\\": \\\"GET\\\",\\n  \\\"path\\\": \\\"/capability-grants\\\",\\n  \\\"entitlement_status\\\": \\\"missing\\\",\\n  \\\"entitlement_reason\\\": \\\"entitlement_missing\\\"\\n}\\n\"\n      }\n    },\n    {\n      \"step\": \"allowed_runs_list\",\n      \"result\": {\n        \"statusCode\": 200\n      }\n    }\n  ],\n  \"serverLogs\": {\n    \"stdout\": \"[agent-host/community-kernel] listening on http://127.0.0.1:43187\\n[agent-host/community-kernel] private providers authorized=false loaded=0\",\n    \"stderr\": \"\"\n  }\n}\n",
         "stderr": ""
       }
     },
@@ -46,7 +46,7 @@
       "result": {
         "command": "node C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\cli.mjs entry restart",
         "code": 0,
-        "stdout": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"stop\",\n  \"pid\": 28528,\n  \"stopped\": true,\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"pid\": null,\n    \"startedAt\": \"2026-04-21T22:18:02.900Z\",\n    \"lastHealthCheck\": \"2026-04-21T22:18:26.866Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": \"STOPPED\",\n    \"mode\": \"community_edition\",\n    \"status\": \"stopped\",\n    \"serverPid\": null\n  }\n}\n{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"start\",\n  \"pid\": 6820,\n  \"health\": {\n    \"ok\": true,\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\"\n  }\n}\n",
+        "stdout": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"stop\",\n  \"pid\": 24124,\n  \"stopped\": true,\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"pid\": null,\n    \"startedAt\": \"2026-04-22T00:40:09.418Z\",\n    \"lastHealthCheck\": \"2026-04-22T00:40:35.555Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": \"STOPPED\",\n    \"mode\": \"community_edition\",\n    \"status\": \"stopped\",\n    \"serverPid\": null\n  }\n}\n{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"start\",\n  \"pid\": 8060,\n  \"health\": {\n    \"ok\": true,\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\"\n  }\n}\n",
         "stderr": ""
       }
     },
@@ -54,20 +54,20 @@
       "step": "status_after_invalid_signatures",
       "result": {
         "statusCode": 200,
-        "body": "{\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"edition\": \"community\",\n  \"pid\": 6820,\n  \"startedAt\": \"2026-04-21T22:18:30.100Z\",\n  \"lastHealthCheck\": \"2026-04-21T22:18:30.994Z\",\n  \"restartCount\": 0,\n  \"degraded\": true,\n  \"lastError\": null,\n  \"mode\": \"community_edition\",\n  \"status\": \"degraded\",\n  \"serverPid\": 15888,\n  \"security\": {\n    \"communityEdition\": true,\n    \"officialCapabilitiesEnabled\": false,\n    \"entitlement\": {\n      \"enabled\": false,\n      \"status\": \"invalid\",\n      \"failClosed\": true,\n      \"reason\": \"issuedAt_in_future\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\entry\\\\state\\\\entitlement.invalid.v1.json\",\n      \"verifiedAt\": \"2026-04-21T22:18:30.105Z\",\n      \"issuer\": \"litecodex-official\",\n      \"scope\": \"community\",\n      \"features\": {\n        \"community_core\": true,\n        \"official_advanced\": false,\n        \"official_plugin_channel\": false\n      }\n    },\n    \"updates\": {\n      \"enabled\": false,\n      \"status\": \"invalid\",\n      \"failClosed\": true,\n      \"reason\": \"manifest_signature_invalid\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\entry\\\\state\\\\release-manifest.invalid.v1.json\",\n      \"verifiedAt\": \"2026-04-21T22:18:30.106Z\",\n      \"issuer\": \"litecodex-official\",\n      \"artifactsVerified\": 0\n    }\n  }\n}\n",
+        "body": "{\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"edition\": \"community\",\n  \"pid\": 8060,\n  \"startedAt\": \"2026-04-22T00:40:37.714Z\",\n  \"lastHealthCheck\": \"2026-04-22T00:40:38.158Z\",\n  \"restartCount\": 0,\n  \"degraded\": true,\n  \"lastError\": null,\n  \"mode\": \"community_edition\",\n  \"status\": \"degraded\",\n  \"serverPid\": 13944,\n  \"security\": {\n    \"communityEdition\": true,\n    \"officialCapabilitiesEnabled\": false,\n    \"entitlement\": {\n      \"enabled\": false,\n      \"status\": \"invalid\",\n      \"failClosed\": true,\n      \"reason\": \"signature_invalid\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\entry\\\\state\\\\entitlement.invalid.v1.json\",\n      \"verifiedAt\": \"2026-04-22T00:40:37.717Z\",\n      \"issuer\": \"litecodex-official\",\n      \"scope\": \"community\",\n      \"features\": {\n        \"community_core\": true,\n        \"official_advanced\": false,\n        \"official_plugin_channel\": false\n      }\n    },\n    \"updates\": {\n      \"enabled\": false,\n      \"status\": \"invalid\",\n      \"failClosed\": true,\n      \"reason\": \"manifest_signature_invalid\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\entry\\\\state\\\\release-manifest.invalid.v1.json\",\n      \"verifiedAt\": \"2026-04-22T00:40:37.721Z\",\n      \"issuer\": \"litecodex-official\",\n      \"artifactsVerified\": 0\n    }\n  }\n}\n",
         "json": {
           "service": "litecodex-entry",
           "listen": "127.0.0.1:43985",
           "edition": "community",
-          "pid": 6820,
-          "startedAt": "2026-04-21T22:18:30.100Z",
-          "lastHealthCheck": "2026-04-21T22:18:30.994Z",
+          "pid": 8060,
+          "startedAt": "2026-04-22T00:40:37.714Z",
+          "lastHealthCheck": "2026-04-22T00:40:38.158Z",
           "restartCount": 0,
           "degraded": true,
           "lastError": null,
           "mode": "community_edition",
           "status": "degraded",
-          "serverPid": 15888,
+          "serverPid": 13944,
           "security": {
             "communityEdition": true,
             "officialCapabilitiesEnabled": false,
@@ -75,9 +75,9 @@
               "enabled": false,
               "status": "invalid",
               "failClosed": true,
-              "reason": "issuedAt_in_future",
+              "reason": "signature_invalid",
               "source": "C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\state\\entitlement.invalid.v1.json",
-              "verifiedAt": "2026-04-21T22:18:30.105Z",
+              "verifiedAt": "2026-04-22T00:40:37.717Z",
               "issuer": "litecodex-official",
               "scope": "community",
               "features": {
@@ -92,7 +92,7 @@
               "failClosed": true,
               "reason": "manifest_signature_invalid",
               "source": "C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\state\\release-manifest.invalid.v1.json",
-              "verifiedAt": "2026-04-21T22:18:30.106Z",
+              "verifiedAt": "2026-04-22T00:40:37.721Z",
               "issuer": "litecodex-official",
               "artifactsVerified": 0
             }
@@ -105,7 +105,7 @@
       "result": {
         "command": "node C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\cli.mjs entry restart",
         "code": 0,
-        "stdout": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"stop\",\n  \"pid\": 6820,\n  \"stopped\": true,\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"pid\": null,\n    \"startedAt\": \"2026-04-21T22:18:30.100Z\",\n    \"lastHealthCheck\": \"2026-04-21T22:18:31.150Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": \"STOPPED\",\n    \"mode\": \"community_edition\",\n    \"status\": \"stopped\",\n    \"serverPid\": null\n  }\n}\n{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"start\",\n  \"pid\": 19100,\n  \"health\": {\n    \"ok\": true,\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\"\n  }\n}\n",
+        "stdout": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"stop\",\n  \"pid\": 8060,\n  \"stopped\": true,\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"pid\": null,\n    \"startedAt\": \"2026-04-22T00:40:37.714Z\",\n    \"lastHealthCheck\": \"2026-04-22T00:40:38.280Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": \"STOPPED\",\n    \"mode\": \"community_edition\",\n    \"status\": \"stopped\",\n    \"serverPid\": null\n  }\n}\n{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"start\",\n  \"pid\": 28900,\n  \"health\": {\n    \"ok\": true,\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\"\n  }\n}\n",
         "stderr": ""
       }
     },
@@ -113,20 +113,20 @@
       "step": "status_after_missing_inputs",
       "result": {
         "statusCode": 200,
-        "body": "{\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"edition\": \"community\",\n  \"pid\": 19100,\n  \"startedAt\": \"2026-04-21T22:18:34.776Z\",\n  \"lastHealthCheck\": \"2026-04-21T22:18:36.175Z\",\n  \"restartCount\": 0,\n  \"degraded\": false,\n  \"lastError\": null,\n  \"mode\": \"community_edition\",\n  \"status\": \"online\",\n  \"serverPid\": 11588,\n  \"security\": {\n    \"communityEdition\": true,\n    \"officialCapabilitiesEnabled\": false,\n    \"entitlement\": {\n      \"enabled\": false,\n      \"status\": \"missing\",\n      \"failClosed\": false,\n      \"reason\": \"entitlement_missing\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\entry\\\\state\\\\entitlement.missing.v1.json\",\n      \"verifiedAt\": \"2026-04-21T22:18:34.783Z\",\n      \"issuer\": \"litecodex-official\",\n      \"scope\": \"community\",\n      \"features\": {\n        \"community_core\": true,\n        \"official_advanced\": false,\n        \"official_plugin_channel\": false\n      }\n    },\n    \"updates\": {\n      \"enabled\": false,\n      \"status\": \"missing\",\n      \"failClosed\": false,\n      \"reason\": \"manifest_missing\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\entry\\\\state\\\\release-manifest.missing.v1.json\",\n      \"verifiedAt\": \"2026-04-21T22:18:34.784Z\",\n      \"issuer\": \"litecodex-official\",\n      \"artifactsVerified\": 0\n    }\n  }\n}\n",
+        "body": "{\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"edition\": \"community\",\n  \"pid\": 28900,\n  \"startedAt\": \"2026-04-22T00:40:40.403Z\",\n  \"lastHealthCheck\": \"2026-04-22T00:40:41.350Z\",\n  \"restartCount\": 0,\n  \"degraded\": false,\n  \"lastError\": null,\n  \"mode\": \"community_edition\",\n  \"status\": \"online\",\n  \"serverPid\": 25852,\n  \"security\": {\n    \"communityEdition\": true,\n    \"officialCapabilitiesEnabled\": false,\n    \"entitlement\": {\n      \"enabled\": false,\n      \"status\": \"missing\",\n      \"failClosed\": false,\n      \"reason\": \"entitlement_missing\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\entry\\\\state\\\\entitlement.missing.v1.json\",\n      \"verifiedAt\": \"2026-04-22T00:40:40.406Z\",\n      \"issuer\": \"litecodex-official\",\n      \"scope\": \"community\",\n      \"features\": {\n        \"community_core\": true,\n        \"official_advanced\": false,\n        \"official_plugin_channel\": false\n      }\n    },\n    \"updates\": {\n      \"enabled\": false,\n      \"status\": \"missing\",\n      \"failClosed\": false,\n      \"reason\": \"manifest_missing\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\entry\\\\state\\\\release-manifest.missing.v1.json\",\n      \"verifiedAt\": \"2026-04-22T00:40:40.407Z\",\n      \"issuer\": \"litecodex-official\",\n      \"artifactsVerified\": 0\n    }\n  }\n}\n",
         "json": {
           "service": "litecodex-entry",
           "listen": "127.0.0.1:43985",
           "edition": "community",
-          "pid": 19100,
-          "startedAt": "2026-04-21T22:18:34.776Z",
-          "lastHealthCheck": "2026-04-21T22:18:36.175Z",
+          "pid": 28900,
+          "startedAt": "2026-04-22T00:40:40.403Z",
+          "lastHealthCheck": "2026-04-22T00:40:41.350Z",
           "restartCount": 0,
           "degraded": false,
           "lastError": null,
           "mode": "community_edition",
           "status": "online",
-          "serverPid": 11588,
+          "serverPid": 25852,
           "security": {
             "communityEdition": true,
             "officialCapabilitiesEnabled": false,
@@ -136,7 +136,7 @@
               "failClosed": false,
               "reason": "entitlement_missing",
               "source": "C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\state\\entitlement.missing.v1.json",
-              "verifiedAt": "2026-04-21T22:18:34.783Z",
+              "verifiedAt": "2026-04-22T00:40:40.406Z",
               "issuer": "litecodex-official",
               "scope": "community",
               "features": {
@@ -151,7 +151,7 @@
               "failClosed": false,
               "reason": "manifest_missing",
               "source": "C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\state\\release-manifest.missing.v1.json",
-              "verifiedAt": "2026-04-21T22:18:34.784Z",
+              "verifiedAt": "2026-04-22T00:40:40.407Z",
               "issuer": "litecodex-official",
               "artifactsVerified": 0
             }
@@ -164,7 +164,7 @@
       "result": {
         "command": "node C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\cli.mjs entry restart",
         "code": 0,
-        "stdout": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"stop\",\n  \"pid\": 19100,\n  \"stopped\": true,\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"pid\": null,\n    \"startedAt\": \"2026-04-21T22:18:34.776Z\",\n    \"lastHealthCheck\": \"2026-04-21T22:18:36.293Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": \"STOPPED\",\n    \"mode\": \"community_edition\",\n    \"status\": \"stopped\",\n    \"serverPid\": null\n  }\n}\n{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"start\",\n  \"pid\": 20352,\n  \"health\": {\n    \"ok\": true,\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\"\n  }\n}\n",
+        "stdout": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"stop\",\n  \"pid\": 28900,\n  \"stopped\": true,\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"pid\": null,\n    \"startedAt\": \"2026-04-22T00:40:40.403Z\",\n    \"lastHealthCheck\": \"2026-04-22T00:40:41.463Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": \"STOPPED\",\n    \"mode\": \"community_edition\",\n    \"status\": \"stopped\",\n    \"serverPid\": null\n  }\n}\n{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"start\",\n  \"pid\": 24244,\n  \"health\": {\n    \"ok\": true,\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\"\n  }\n}\n",
         "stderr": ""
       }
     }

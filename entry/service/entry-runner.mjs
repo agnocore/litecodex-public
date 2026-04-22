@@ -24,6 +24,8 @@ const stateFile = path.join(stateDir, "entry-state.json");
 const pidFile = path.join(stateDir, "entry.pid");
 const serverScript = path.join(serviceDir, "entry-server.mjs");
 const entitlementFile = process.env.LITECODEX_ENTITLEMENT_FILE || path.join(stateDir, "entitlement.v1.json");
+const entitlementKeysFile =
+  process.env.LITECODEX_ENTITLEMENT_PUBLIC_KEYS_FILE || path.join(rootDir, "shared", "entitlement-public-keys.v1.json");
 const updateManifestFile = process.env.LITECODEX_RELEASE_MANIFEST_FILE || path.join(stateDir, "release-manifest.v1.json");
 
 let shuttingDown = false;
@@ -53,7 +55,7 @@ const state = {
 };
 
 function buildSecurityState() {
-  const entitlement = verifyEntitlement({ repoRoot: rootDir, entitlementFile });
+  const entitlement = verifyEntitlement({ repoRoot: rootDir, entitlementFile, keysFile: entitlementKeysFile });
   const updates = verifyUpdateManifest({ repoRoot: rootDir, manifestFile: updateManifestFile });
   const officialCapabilitiesEnabled =
     entitlement.status === "valid" && entitlement.features && entitlement.features.official_advanced === true;

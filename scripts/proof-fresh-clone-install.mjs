@@ -91,6 +91,34 @@ function getJson(pathname) {
   });
 }
 
+function getText(pathname) {
+  return new Promise((resolve, reject) => {
+    const req = http.get(
+      {
+        host: "127.0.0.1",
+        port: 43985,
+        path: pathname,
+        timeout: 5000
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          resolve({
+            statusCode: res.statusCode || 0,
+            body
+          });
+        });
+      }
+    );
+    req.on("timeout", () => req.destroy(new Error("timeout")));
+    req.on("error", reject);
+  });
+}
+
 function listPortListeners(port) {
   const res = run("netstat", ["-ano", "-p", "tcp"], { timeout: 20000 });
   const lines = `${res.stdout}\n${res.stderr}`.split(/\r?\n/);
@@ -109,8 +137,10 @@ function listPortListeners(port) {
       localAddress.endsWith(`.1:${port}`);
     if (!isTargetPort) continue;
     if (!/^\d+$/.test(pidValue)) continue;
+    const pid = Number(pidValue);
+    if (!Number.isFinite(pid) || pid <= 0) continue;
     if (!["LISTENING", "ESTABLISHED", "TIME_WAIT", "CLOSE_WAIT"].includes(state)) continue;
-    pids.add(Number(pidValue));
+    pids.add(pid);
   }
   return Array.from(pids).sort((a, b) => a - b);
 }
@@ -194,6 +224,27 @@ async function main() {
   const statusEndpoint = await getJson("/status");
   runtimeSteps.push({ step: "entry_status_endpoint", result: statusEndpoint });
 
+  const home = await getText("/");
+  const settings = await getText("/settings");
+  const sessions = await getText("/sessions");
+  runtimeSteps.push({
+    step: "entry_pages",
+    result: {
+      home_status: home.statusCode,
+      settings_status: settings.statusCode,
+      sessions_status: sessions.statusCode
+    }
+  });
+  ensure(home.statusCode === 200, "fresh_clone_home_unreachable");
+  ensure(settings.statusCode === 200, "fresh_clone_settings_unreachable");
+  ensure(sessions.statusCode === 200, "fresh_clone_sessions_unreachable");
+  const homeLooksProductized =
+    home.body.includes("lite-codex") &&
+    home.body.includes("app.js") &&
+    settings.body.includes("lite-codex") &&
+    sessions.body.includes("lite-codex");
+  ensure(homeLooksProductized, "fresh_clone_productized_entry_ui_missing");
+
   const proof = {
     generatedAt: new Date().toISOString(),
     ok: true,
@@ -207,7 +258,12 @@ async function main() {
       entryStatusContractValid:
         entryStatusJson?.remote?.body?.service === "litecodex-entry" &&
         entryStatusJson?.remote?.body?.listen === "127.0.0.1:43985",
-      statusEndpointOnline: statusEndpoint.statusCode === 200 && statusEndpoint.json?.status === "online"
+      statusEndpointOnline: statusEndpoint.statusCode === 200 && statusEndpoint.json?.status === "online",
+      productizedPagesReachable:
+        home.statusCode === 200 &&
+        settings.statusCode === 200 &&
+        sessions.statusCode === 200 &&
+        homeLooksProductized
     },
     steps: runtimeSteps
   };

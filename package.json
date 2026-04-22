@@ -13,6 +13,7 @@
     "audit:community:boundary": "node scripts/audit-community-boundary.mjs",
     "proof:private-provider-load": "node scripts/proof-private-provider-load.mjs",
     "proof:fresh-clone-install": "node scripts/proof-fresh-clone-install.mjs",
+    "proof:entry-frontend": "node scripts/proof-entry-frontend-productization.mjs",
     "build:community": "node scripts/build-community.mjs",
     "build:private": "node scripts/build-private.mjs",
     "release:community:verify": "node scripts/release-community-verify.mjs"

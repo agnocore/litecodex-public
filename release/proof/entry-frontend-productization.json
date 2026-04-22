@@ -1,0 +1,295 @@
+{
+  "generatedAt": "2026-04-22T00:36:26.359Z",
+  "ok": true,
+  "checks": {
+    "ceDefaultUiReachable": true,
+    "ceGeneralExecutionWorks": true,
+    "restrictedReturns403": true,
+    "authorizedEnhancedExecutionWorks": true,
+    "failClosedStateVisible": true
+  },
+  "steps": [
+    {
+      "step": "restart_default",
+      "result": {
+        "command": "node C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\cli.mjs entry restart",
+        "code": 0,
+        "stdout": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"stop\",\n  \"pid\": 28044,\n  \"stopped\": true,\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"pid\": null,\n    \"startedAt\": \"2026-04-22T00:34:14.702Z\",\n    \"lastHealthCheck\": \"2026-04-22T00:36:13.108Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": \"STOPPED\",\n    \"mode\": \"community_edition\",\n    \"status\": \"stopped\",\n    \"serverPid\": null\n  }\n}\n{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"start\",\n  \"pid\": 26540,\n  \"health\": {\n    \"ok\": true,\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\"\n  }\n}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "step": "ce_default_mode",
+      "result": {
+        "preflight": {
+          "statusCode": 200,
+          "body": "{\n  \"ok\": true,\n  \"contract_version\": \"v1.foundation-final-closeout\",\n  \"host_connected\": true,\n  \"full_access_granted\": false,\n  \"openai_byo_bound\": false,\n  \"workspace_available\": false,\n  \"selected_workspace\": null,\n  \"last_session_available\": false,\n  \"last_session\": null,\n  \"contracts\": {\n    \"preflight\": \"v1.foundation-final-closeout\",\n    \"workspace\": \"v1.foundation-final-closeout\",\n    \"session\": \"v1.foundation-final-closeout\",\n    \"attachment\": \"v1.foundation-final-closeout\",\n    \"access\": \"v1.foundation-final-closeout\",\n    \"byo_openai\": \"v1.foundation-final-closeout\"\n  },\n  \"provider_access\": {\n    \"authorized\": false,\n    \"loaded_count\": 0\n  },\n  \"security\": {\n    \"fail_closed\": false,\n    \"reason\": null\n  }\n}\n",
+          "json": {
+            "ok": true,
+            "contract_version": "v1.foundation-final-closeout",
+            "host_connected": true,
+            "full_access_granted": false,
+            "openai_byo_bound": false,
+            "workspace_available": false,
+            "selected_workspace": null,
+            "last_session_available": false,
+            "last_session": null,
+            "contracts": {
+              "preflight": "v1.foundation-final-closeout",
+              "workspace": "v1.foundation-final-closeout",
+              "session": "v1.foundation-final-closeout",
+              "attachment": "v1.foundation-final-closeout",
+              "access": "v1.foundation-final-closeout",
+              "byo_openai": "v1.foundation-final-closeout"
+            },
+            "provider_access": {
+              "authorized": false,
+              "loaded_count": 0
+            },
+            "security": {
+              "fail_closed": false,
+              "reason": null
+            }
+          }
+        },
+        "page_statuses": {
+          "home": 200,
+          "settings": 200,
+          "sessions": 200
+        },
+        "general": {
+          "statusCode": 200,
+          "body": "{\n  \"ok\": true,\n  \"mode\": \"community\",\n  \"intent\": \"general\",\n  \"run\": {\n    \"id\": \"run_1776818176115_e537ff4f\",\n    \"title\": \"summarize this task in community lane\",\n    \"status\": \"running\",\n    \"created_at\": \"2026-04-22T00:36:16.115Z\",\n    \"updated_at\": \"2026-04-22T00:36:16.115Z\",\n    \"source\": \"community_api\",\n    \"mode\": \"community\"\n  },\n  \"verify\": {\n    \"ok\": true,\n    \"run_id\": \"run_1776818176115_e537ff4f\",\n    \"compact\": {\n      \"run_id\": \"run_1776818176115_e537ff4f\",\n      \"mode\": \"manual\",\n      \"created_at\": \"2026-04-22T00:36:16.118Z\",\n      \"snapshot\": {\n        \"title\": \"summarize this task in community lane\",\n        \"status\": \"running\",\n        \"source\": \"community_api\",\n        \"updated_at\": \"2026-04-22T00:36:16.115Z\"\n      },\n      \"hash\": \"1568df76b62bde8d1b4581c17fa8bbdf2351809fb6a67f4317edfa95e800e370\"\n    }\n  },\n  \"cards\": [\n    {\n      \"type\": \"Execution Step\",\n      \"title\": \"Community Execution\",\n      \"content\": \"Community kernel created run and baseline execution trace.\"\n    },\n    {\n      \"type\": \"Verify Result\",\n      \"title\": \"Verify Completed\",\n      \"content\": \"Verify/compact completed.\"\n    },\n    {\n      \"type\": \"Final Answer\",\n      \"title\": \"Final Answer\",\n      \"content\": \"Community lane finished for: summarize this task in community lane\"\n    }\n  ]\n}\n",
+          "json": {
+            "ok": true,
+            "mode": "community",
+            "intent": "general",
+            "run": {
+              "id": "run_1776818176115_e537ff4f",
+              "title": "summarize this task in community lane",
+              "status": "running",
+              "created_at": "2026-04-22T00:36:16.115Z",
+              "updated_at": "2026-04-22T00:36:16.115Z",
+              "source": "community_api",
+              "mode": "community"
+            },
+            "verify": {
+              "ok": true,
+              "run_id": "run_1776818176115_e537ff4f",
+              "compact": {
+                "run_id": "run_1776818176115_e537ff4f",
+                "mode": "manual",
+                "created_at": "2026-04-22T00:36:16.118Z",
+                "snapshot": {
+                  "title": "summarize this task in community lane",
+                  "status": "running",
+                  "source": "community_api",
+                  "updated_at": "2026-04-22T00:36:16.115Z"
+                },
+                "hash": "1568df76b62bde8d1b4581c17fa8bbdf2351809fb6a67f4317edfa95e800e370"
+              }
+            },
+            "cards": [
+              {
+                "type": "Execution Step",
+                "title": "Community Execution",
+                "content": "Community kernel created run and baseline execution trace."
+              },
+              {
+                "type": "Verify Result",
+                "title": "Verify Completed",
+                "content": "Verify/compact completed."
+              },
+              {
+                "type": "Final Answer",
+                "title": "Final Answer",
+                "content": "Community lane finished for: summarize this task in community lane"
+              }
+            ]
+          }
+        },
+        "restricted": {
+          "statusCode": 403,
+          "body": "{\n  \"ok\": false,\n  \"error\": \"community_edition_restricted\",\n  \"code\": \"COMMUNITY_EDITION_RESTRICTED\",\n  \"required_feature\": \"official_advanced\",\n  \"capability\": \"internal_or_official_workflow\",\n  \"reason\": \"enhanced_deploy_requires_authorized_private_provider\"\n}\n",
+          "json": {
+            "ok": false,
+            "error": "community_edition_restricted",
+            "code": "COMMUNITY_EDITION_RESTRICTED",
+            "required_feature": "official_advanced",
+            "capability": "internal_or_official_workflow",
+            "reason": "enhanced_deploy_requires_authorized_private_provider"
+          }
+        }
+      }
+    },
+    {
+      "step": "restart_authorized",
+      "result": {
+        "command": "node C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\cli.mjs entry restart",
+        "code": 0,
+        "stdout": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"stop\",\n  \"pid\": 26540,\n  \"stopped\": true,\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"pid\": null,\n    \"startedAt\": \"2026-04-22T00:36:15.246Z\",\n    \"lastHealthCheck\": \"2026-04-22T00:36:16.210Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": \"STOPPED\",\n    \"mode\": \"community_edition\",\n    \"status\": \"stopped\",\n    \"serverPid\": null\n  }\n}\n{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"start\",\n  \"pid\": 16272,\n  \"health\": {\n    \"ok\": true,\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\"\n  }\n}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "step": "authorized_mode",
+      "result": {
+        "preflight": {
+          "statusCode": 200,
+          "body": "{\n  \"ok\": true,\n  \"contract_version\": \"v1.foundation-final-closeout\",\n  \"host_connected\": true,\n  \"full_access_granted\": true,\n  \"openai_byo_bound\": true,\n  \"workspace_available\": true,\n  \"selected_workspace\": {\n    \"id\": \"ws_1776818180254_f60e0614\",\n    \"name\": \"ce-ui-1776818180250\",\n    \"workspace_path\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\workspaces\\\\ce-ui-1776818180250\",\n    \"created_at\": \"2026-04-22T00:36:20.254Z\",\n    \"updated_at\": \"2026-04-22T00:36:20.254Z\"\n  },\n  \"last_session_available\": true,\n  \"last_session\": {\n    \"id\": \"sess_1776818180265_c8409348\",\n    \"workspace_id\": \"ws_1776818180254_f60e0614\",\n    \"run_id\": \"run_1776818180263_a1741b3e\",\n    \"status\": \"active\",\n    \"title\": \"Untitled Session\",\n    \"created_at\": \"2026-04-22T00:36:20.265Z\",\n    \"updated_at\": \"2026-04-22T00:36:20.265Z\",\n    \"last_active_at\": \"2026-04-22T00:36:20.265Z\"\n  },\n  \"contracts\": {\n    \"preflight\": \"v1.foundation-final-closeout\",\n    \"workspace\": \"v1.foundation-final-closeout\",\n    \"session\": \"v1.foundation-final-closeout\",\n    \"attachment\": \"v1.foundation-final-closeout\",\n    \"access\": \"v1.foundation-final-closeout\",\n    \"byo_openai\": \"v1.foundation-final-closeout\"\n  },\n  \"provider_access\": {\n    \"authorized\": true,\n    \"loaded_count\": 1\n  },\n  \"security\": {\n    \"fail_closed\": false,\n    \"reason\": null\n  }\n}\n",
+          "json": {
+            "ok": true,
+            "contract_version": "v1.foundation-final-closeout",
+            "host_connected": true,
+            "full_access_granted": true,
+            "openai_byo_bound": true,
+            "workspace_available": true,
+            "selected_workspace": {
+              "id": "ws_1776818180254_f60e0614",
+              "name": "ce-ui-1776818180250",
+              "workspace_path": "C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\workspaces\\ce-ui-1776818180250",
+              "created_at": "2026-04-22T00:36:20.254Z",
+              "updated_at": "2026-04-22T00:36:20.254Z"
+            },
+            "last_session_available": true,
+            "last_session": {
+              "id": "sess_1776818180265_c8409348",
+              "workspace_id": "ws_1776818180254_f60e0614",
+              "run_id": "run_1776818180263_a1741b3e",
+              "status": "active",
+              "title": "Untitled Session",
+              "created_at": "2026-04-22T00:36:20.265Z",
+              "updated_at": "2026-04-22T00:36:20.265Z",
+              "last_active_at": "2026-04-22T00:36:20.265Z"
+            },
+            "contracts": {
+              "preflight": "v1.foundation-final-closeout",
+              "workspace": "v1.foundation-final-closeout",
+              "session": "v1.foundation-final-closeout",
+              "attachment": "v1.foundation-final-closeout",
+              "access": "v1.foundation-final-closeout",
+              "byo_openai": "v1.foundation-final-closeout"
+            },
+            "provider_access": {
+              "authorized": true,
+              "loaded_count": 1
+            },
+            "security": {
+              "fail_closed": false,
+              "reason": null
+            }
+          }
+        },
+        "deploy": {
+          "statusCode": 200,
+          "body": "{\n  \"ok\": true,\n  \"mode\": \"enhanced\",\n  \"intent\": \"deploy\",\n  \"run\": {\n    \"id\": \"run_1776818180274_eeddeb66\",\n    \"title\": \"Deploy: deploy release candidate\",\n    \"status\": \"completed\",\n    \"created_at\": \"2026-04-22T00:36:20.274Z\",\n    \"updated_at\": \"2026-04-22T00:36:20.276Z\",\n    \"source\": \"private_provider:workspace-root-deploy-closeout\",\n    \"mode\": \"community\",\n    \"workflow\": \"workspace-root-deploy-closeout\",\n    \"private_execution_unit\": \"pcp-official-capability-provider-v1\",\n    \"completed_at\": \"2026-04-22T00:36:20.276Z\"\n  },\n  \"cards\": [\n    {\n      \"type\": \"Execution Step\",\n      \"title\": \"Enhanced Execution\",\n      \"content\": \"Authorized provider executed deploy workflow.\"\n    },\n    {\n      \"type\": \"Deploy Result\",\n      \"title\": \"Deploy Completed\",\n      \"content\": \"Deployment completed.\"\n    },\n    {\n      \"type\": \"Final Answer\",\n      \"title\": \"Final Answer\",\n      \"content\": \"Enhanced lane finished for: deploy release candidate\"\n    }\n  ]\n}\n",
+          "json": {
+            "ok": true,
+            "mode": "enhanced",
+            "intent": "deploy",
+            "run": {
+              "id": "run_1776818180274_eeddeb66",
+              "title": "Deploy: deploy release candidate",
+              "status": "completed",
+              "created_at": "2026-04-22T00:36:20.274Z",
+              "updated_at": "2026-04-22T00:36:20.276Z",
+              "source": "private_provider:workspace-root-deploy-closeout",
+              "mode": "community",
+              "workflow": "workspace-root-deploy-closeout",
+              "private_execution_unit": "pcp-official-capability-provider-v1",
+              "completed_at": "2026-04-22T00:36:20.276Z"
+            },
+            "cards": [
+              {
+                "type": "Execution Step",
+                "title": "Enhanced Execution",
+                "content": "Authorized provider executed deploy workflow."
+              },
+              {
+                "type": "Deploy Result",
+                "title": "Deploy Completed",
+                "content": "Deployment completed."
+              },
+              {
+                "type": "Final Answer",
+                "title": "Final Answer",
+                "content": "Enhanced lane finished for: deploy release candidate"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "restart_fail_closed",
+      "result": {
+        "command": "node C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\cli.mjs entry restart",
+        "code": 0,
+        "stdout": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"stop\",\n  \"pid\": 16272,\n  \"stopped\": true,\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"pid\": null,\n    \"startedAt\": \"2026-04-22T00:36:19.284Z\",\n    \"lastHealthCheck\": \"2026-04-22T00:36:20.362Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": \"STOPPED\",\n    \"mode\": \"community_edition\",\n    \"status\": \"stopped\",\n    \"serverPid\": null\n  }\n}\n{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"start\",\n  \"pid\": 19488,\n  \"health\": {\n    \"ok\": true,\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\"\n  }\n}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "step": "fail_closed_mode",
+      "result": {
+        "status": {
+          "statusCode": 200,
+          "body": "{\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"edition\": \"community\",\n  \"pid\": 19488,\n  \"startedAt\": \"2026-04-22T00:36:22.006Z\",\n  \"lastHealthCheck\": \"2026-04-22T00:36:23.343Z\",\n  \"restartCount\": 0,\n  \"degraded\": true,\n  \"lastError\": null,\n  \"mode\": \"community_edition\",\n  \"status\": \"degraded\",\n  \"serverPid\": 1848,\n  \"security\": {\n    \"communityEdition\": true,\n    \"officialCapabilitiesEnabled\": false,\n    \"entitlement\": {\n      \"enabled\": false,\n      \"status\": \"invalid\",\n      \"failClosed\": true,\n      \"reason\": \"signature_invalid\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\entry\\\\state\\\\entitlement.invalid.v1.json\",\n      \"verifiedAt\": \"2026-04-22T00:36:22.008Z\",\n      \"issuer\": \"litecodex-official\",\n      \"scope\": \"community\",\n      \"features\": {\n        \"community_core\": true,\n        \"official_advanced\": false,\n        \"official_plugin_channel\": false\n      }\n    },\n    \"updates\": {\n      \"enabled\": false,\n      \"status\": \"invalid\",\n      \"failClosed\": true,\n      \"reason\": \"manifest_signature_invalid\",\n      \"source\": \"C:\\\\node\\\\GPT5-codex\\\\litecodex\\\\release\\\\out\\\\community\\\\entry\\\\state\\\\release-manifest.invalid.v1.json\",\n      \"verifiedAt\": \"2026-04-22T00:36:22.011Z\",\n      \"issuer\": \"litecodex-official\",\n      \"artifactsVerified\": 0\n    }\n  }\n}\n",
+          "json": {
+            "service": "litecodex-entry",
+            "listen": "127.0.0.1:43985",
+            "edition": "community",
+            "pid": 19488,
+            "startedAt": "2026-04-22T00:36:22.006Z",
+            "lastHealthCheck": "2026-04-22T00:36:23.343Z",
+            "restartCount": 0,
+            "degraded": true,
+            "lastError": null,
+            "mode": "community_edition",
+            "status": "degraded",
+            "serverPid": 1848,
+            "security": {
+              "communityEdition": true,
+              "officialCapabilitiesEnabled": false,
+              "entitlement": {
+                "enabled": false,
+                "status": "invalid",
+                "failClosed": true,
+                "reason": "signature_invalid",
+                "source": "C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\state\\entitlement.invalid.v1.json",
+                "verifiedAt": "2026-04-22T00:36:22.008Z",
+                "issuer": "litecodex-official",
+                "scope": "community",
+                "features": {
+                  "community_core": true,
+                  "official_advanced": false,
+                  "official_plugin_channel": false
+                }
+              },
+              "updates": {
+                "enabled": false,
+                "status": "invalid",
+                "failClosed": true,
+                "reason": "manifest_signature_invalid",
+                "source": "C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\state\\release-manifest.invalid.v1.json",
+                "verifiedAt": "2026-04-22T00:36:22.011Z",
+                "issuer": "litecodex-official",
+                "artifactsVerified": 0
+              }
+            }
+          }
+        },
+        "home_status": 200
+      }
+    },
+    {
+      "step": "restore_default",
+      "result": {
+        "command": "node C:\\node\\GPT5-codex\\litecodex\\release\\out\\community\\entry\\cli.mjs entry restart",
+        "code": 0,
+        "stdout": "{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"stop\",\n  \"pid\": 19488,\n  \"stopped\": true,\n  \"state\": {\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\",\n    \"pid\": null,\n    \"startedAt\": \"2026-04-22T00:36:22.006Z\",\n    \"lastHealthCheck\": \"2026-04-22T00:36:23.429Z\",\n    \"restartCount\": 0,\n    \"degraded\": false,\n    \"lastError\": \"STOPPED\",\n    \"mode\": \"community_edition\",\n    \"status\": \"stopped\",\n    \"serverPid\": null\n  }\n}\n{\n  \"ok\": true,\n  \"service\": \"litecodex-entry\",\n  \"listen\": \"127.0.0.1:43985\",\n  \"action\": \"start\",\n  \"pid\": 29036,\n  \"health\": {\n    \"ok\": true,\n    \"service\": \"litecodex-entry\",\n    \"listen\": \"127.0.0.1:43985\"\n  }\n}\n",
+        "stderr": ""
+      }
+    }
+  ]
+}
