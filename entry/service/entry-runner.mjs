@@ -27,11 +27,21 @@ const entitlementFile = process.env.LITECODEX_ENTITLEMENT_FILE || path.join(stat
 const entitlementKeysFile =
   process.env.LITECODEX_ENTITLEMENT_PUBLIC_KEYS_FILE || path.join(rootDir, "shared", "entitlement-public-keys.v1.json");
 const updateManifestFile = process.env.LITECODEX_RELEASE_MANIFEST_FILE || path.join(stateDir, "release-manifest.v1.json");
+const hostApiOrigin = String(process.env.LITECODEX_HOST_API_ORIGIN || "http://127.0.0.1:4317").trim();
+const hostPort = parseHostPort(hostApiOrigin);
+const hostScript = process.env.LITECODEX_HOST_SERVER_SCRIPT
+  ? path.resolve(process.env.LITECODEX_HOST_SERVER_SCRIPT)
+  : path.join(rootDir, "agent-host", "src", "server.mjs");
+const hostLog = path.join(logsDir, "host.log");
+const hostErrorLog = path.join(logsDir, "host-error.log");
+const frontendRoots = resolveFrontendRoots();
 
 let shuttingDown = false;
 let child = null;
+let hostChild = null;
 let fallbackServer = null;
 let crashTimestamps = [];
+let hostRestartTimer = null;
 const serviceStartedAt = new Date().toISOString();
 const state = {
   service: SERVICE_NAME,
@@ -46,6 +56,9 @@ const state = {
   mode: MODE,
   status: "online",
   serverPid: null,
+  hostApiOrigin,
+  hostPid: null,
+  frontendRoots,
   security: {
     communityEdition: true,
     officialCapabilitiesEnabled: false,
@@ -53,6 +66,40 @@ const state = {
     updates: null
   }
 };
+
+function parseHostPort(origin) {
+  try {
+    const parsed = new URL(origin);
+    const numeric = Number.parseInt(parsed.port || "80", 10);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : 4317;
+  } catch {
+    return 4317;
+  }
+}
+
+function resolveFrontendRoots() {
+  const candidates = [
+    path.join(serviceDir, "public"),
+    path.join(rootDir, "entry", "service", "public"),
+    path.join(rootDir, "entry", "ui"),
+    path.join(rootDir, "local-ui", "public")
+  ];
+  const roots = [];
+  for (const candidate of candidates) {
+    const abs = path.resolve(candidate);
+    if (roots.includes(abs)) continue;
+    const indexFile = path.join(abs, "index.html");
+    const appFile = path.join(abs, "app.js");
+    try {
+      if (fs.existsSync(indexFile) && fs.existsSync(appFile)) {
+        roots.push(abs);
+      }
+    } catch {
+      // ignore candidate
+    }
+  }
+  return roots;
+}
 
 function buildSecurityState() {
   const entitlement = verifyEntitlement({ repoRoot: rootDir, entitlementFile, keysFile: entitlementKeysFile });
@@ -127,6 +174,7 @@ function updateState(patch = {}) {
 function writeStoppedState() {
   state.pid = null;
   state.serverPid = null;
+  state.hostPid = null;
   state.status = "stopped";
   state.lastError = "STOPPED";
   state.degraded = false;
@@ -257,6 +305,132 @@ function touchHealth() {
   });
 }
 
+function hostHealthOnce(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    const req = http.get(
+      `${hostApiOrigin.replace(/\/+$/, "")}/health`,
+      {
+        timeout: timeoutMs
+      },
+      (res) => {
+        clearTimeout(timer);
+        resolve(res.statusCode === 200);
+      }
+    );
+    req.on("error", () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+    req.on("timeout", () => {
+      req.destroy();
+      clearTimeout(timer);
+      resolve(false);
+    });
+  });
+}
+
+async function waitForHostHealthy(timeoutMs = 20000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await hostHealthOnce(1500)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  return false;
+}
+
+function scheduleHostRestart(delayMs = 2000) {
+  if (shuttingDown || hostRestartTimer) {
+    return;
+  }
+  hostRestartTimer = setTimeout(() => {
+    hostRestartTimer = null;
+    void ensureHostReady();
+  }, delayMs);
+}
+
+async function ensureHostReady() {
+  if (process.env.LITECODEX_ENTRY_DISABLE_HOST_AUTOSTART === "1") {
+    log("host autostart disabled by env");
+    return;
+  }
+  if (await hostHealthOnce(1500)) {
+    updateState({ hostPid: hostChild?.pid || state.hostPid || null });
+    return;
+  }
+
+  if (!fs.existsSync(hostScript)) {
+    updateState({
+      degraded: true,
+      lastError: `HOST_SCRIPT_MISSING:${hostScript}`
+    });
+    logError(`host script missing: ${hostScript}`);
+    return;
+  }
+
+  if (hostChild && isPidRunning(hostChild.pid || 0)) {
+    const ready = await waitForHostHealthy(12000);
+    if (ready) {
+      updateState({ hostPid: hostChild.pid || null, lastError: null });
+      return;
+    }
+  }
+
+  hostChild = spawn(process.execPath, [hostScript], {
+    cwd: rootDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+    env: {
+      ...process.env,
+      LITE_CODEX_HOST_PORT: String(hostPort)
+    }
+  });
+  updateState({ hostPid: hostChild.pid || null });
+  log(`host spawn requested pid=${hostChild.pid} script=${hostScript} origin=${hostApiOrigin}`);
+
+  hostChild.stdout?.setEncoding("utf8");
+  hostChild.stderr?.setEncoding("utf8");
+  hostChild.stdout?.on("data", (chunk) => {
+    for (const line of chunk.split(/\r?\n/)) {
+      if (line.trim()) appendLine(hostLog, `[${ts()}] [host:${hostChild?.pid}] ${line}`);
+    }
+  });
+  hostChild.stderr?.on("data", (chunk) => {
+    for (const line of chunk.split(/\r?\n/)) {
+      if (line.trim()) appendLine(hostErrorLog, `[${ts()}] [host:${hostChild?.pid}] ${line}`);
+    }
+  });
+  hostChild.on("exit", (code, signal) => {
+    const exitedPid = hostChild?.pid || null;
+    hostChild = null;
+    updateState({
+      hostPid: null,
+      lastError: shuttingDown ? state.lastError : `HOST_EXIT:${code}:${signal || "nosignal"}`
+    });
+    if (!shuttingDown) {
+      logError(`host exited pid=${exitedPid} code=${code} signal=${signal || "none"}`);
+      scheduleHostRestart(2000);
+    }
+  });
+
+  const ready = await waitForHostHealthy(20000);
+  if (!ready) {
+    updateState({
+      degraded: true,
+      lastError: `HOST_START_TIMEOUT:${hostApiOrigin}`
+    });
+    logError(`host did not become healthy within timeout origin=${hostApiOrigin}`);
+    return;
+  }
+  updateState({
+    hostPid: hostChild?.pid || null,
+    lastError: null
+  });
+  log(`host ready origin=${hostApiOrigin} pid=${hostChild?.pid || "external"}`);
+}
+
 function handleFallbackRequest(req, res) {
   const url = new URL(req.url || "/", `http://${ENTRY_LISTEN}`);
   if (req.method === "GET" && url.pathname === "/health") {
@@ -325,6 +499,7 @@ function stopFallbackServer() {
 async function spawnServer() {
   if (shuttingDown) return;
   await stopFallbackServer();
+  await ensureHostReady();
 
   const childEnv = {
     ...process.env,
@@ -336,7 +511,9 @@ async function spawnServer() {
     LITECODEX_ENTRY_EDITION: "community",
     LITECODEX_ENTRY_STARTED_AT: state.startedAt,
     LITECODEX_ENTRY_RESTART_COUNT: String(state.restartCount),
-    LITECODEX_ENTRY_DEGRADED: state.degraded ? "1" : "0"
+    LITECODEX_ENTRY_DEGRADED: state.degraded ? "1" : "0",
+    LITECODEX_HOST_API_ORIGIN: hostApiOrigin,
+    LITECODEX_ENTRY_FRONTEND_ROOTS: frontendRoots.join(path.delimiter)
   };
 
   child = spawn(process.execPath, [serverScript], {
@@ -413,14 +590,18 @@ async function spawnServer() {
         `server crashed pid=${previousPid} code=${code} signal=${signal || "none"} restartCount=${state.restartCount} degraded=${state.degraded} backoffMs=${backoff}`
       );
       setTimeout(() => {
-        spawnServer();
+        void spawnServer().catch((error) => {
+          logError(`server respawn failed: ${error?.stack || error}`);
+        });
       }, backoff);
       return;
     }
 
     log(`server exited normally pid=${previousPid}`);
     setTimeout(() => {
-      spawnServer();
+      void spawnServer().catch((error) => {
+        logError(`server restart failed: ${error?.stack || error}`);
+      });
     }, 1000);
   });
 
@@ -433,6 +614,29 @@ function gracefulShutdown(exitCode = 0) {
   log(`runner shutting down pid=${process.pid}`);
 
   const finalize = async () => {
+    if (hostRestartTimer) {
+      clearTimeout(hostRestartTimer);
+      hostRestartTimer = null;
+    }
+    if (hostChild) {
+      try {
+        hostChild.kill("SIGTERM");
+      } catch {
+        // no-op
+      }
+      const waitUntil = Date.now() + 3000;
+      while (hostChild && Date.now() < waitUntil) {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      if (hostChild) {
+        try {
+          hostChild.kill("SIGKILL");
+        } catch {
+          // no-op
+        }
+        hostChild = null;
+      }
+    }
     await stopFallbackServer();
     writeStoppedState();
     process.exit(exitCode);
@@ -496,7 +700,10 @@ function main() {
   state.status = state.degraded ? "degraded" : "online";
   writeState();
   log(`runner started pid=${process.pid} listen=${ENTRY_LISTEN}`);
-  spawnServer();
+  void spawnServer().catch((error) => {
+    logError(`initial server spawn failed: ${error?.stack || error}`);
+    updateState({ degraded: true, lastError: `SERVER_SPAWN_FAILED:${error?.message || error}` });
+  });
 
   process.on("SIGTERM", () => gracefulShutdown(0));
   process.on("SIGINT", () => gracefulShutdown(0));

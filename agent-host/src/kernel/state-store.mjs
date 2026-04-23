@@ -58,8 +58,14 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
   const sessions = new Map();
   const workspaces = new Map();
   const attachmentsBySession = new Map();
+  const turnsBySession = new Map();
   const capabilityGrants = [];
   const globalEvents = [];
+  const accessState = {
+    full_access_granted: false,
+    updated_at: nowIso(),
+    source: "community_default"
+  };
   let eventSeq = 0;
 
   for (const name of fs.readdirSync(runsRoot)) {
@@ -99,8 +105,10 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
   }
 
   function emitEvent({ type, runId = null, payload = {} }) {
+    const seq = eventSeq + 1;
     const event = {
       id: nextEventId(),
+      seq,
       type: String(type || "event.unknown"),
       run_id: runId ? String(runId) : null,
       created_at: nowIso(),
@@ -257,6 +265,7 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
       updated_at: nowIso()
     };
     sessions.set(id, row);
+    turnsBySession.set(id, []);
     emitEvent({
       type: "session.created",
       runId: run.id,
@@ -267,6 +276,129 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
       }
     });
     return row;
+  }
+
+  function listTurns(sessionId) {
+    return [...(turnsBySession.get(String(sessionId)) || [])];
+  }
+
+  function listRunEvents(runId, sinceSeq = 0) {
+    const id = String(runId || "").trim();
+    if (!id) return [];
+    const since = Number.isFinite(Number(sinceSeq)) ? Number(sinceSeq) : 0;
+    return globalEvents
+      .filter((event) => event.run_id === id && Number(event.seq || 0) > since)
+      .map((event) => ({
+        seq: Number(event.seq || 0),
+        type: event.type,
+        created_at: event.created_at,
+        payload: event.payload || {}
+      }))
+      .sort((a, b) => a.seq - b.seq);
+  }
+
+  function listRunDisplayEvents(runId, sinceSeq = 0) {
+    const rows = listRunEvents(runId, sinceSeq);
+    return rows
+      .filter((event) => event.type === "display.event")
+      .map((event) => ({
+        seq: event.seq,
+        display_type: String(event.payload?.display_type || "").trim(),
+        lane: String(event.payload?.lane || "chat").trim() || "chat",
+        body: String(event.payload?.body || "").trim(),
+        source_event_type: String(event.payload?.source_event_type || "display.event"),
+        created_at: event.created_at,
+        dedupe_key:
+          typeof event.payload?.dedupe_key === "string" && event.payload.dedupe_key.trim()
+            ? event.payload.dedupe_key.trim()
+            : `${runId}:${event.seq}:${String(event.payload?.display_type || "event")}`
+      }))
+      .filter((event) => event.display_type && event.body);
+  }
+
+  function createTurn({ sessionId, prompt = "", lane = "chat", classification = null, attachments = [] } = {}) {
+    const session = getSession(sessionId);
+    if (!session) {
+      return null;
+    }
+    const normalizedPrompt = normalizeString(prompt, "");
+    const run = createRun({
+      title: normalizedPrompt ? `Turn: ${normalizedPrompt.slice(0, 40)}` : "Turn",
+      source: "entry_turn"
+    });
+    const turn = {
+      id: randomId("turn"),
+      session_id: session.id,
+      run_id: run.id,
+      lane: String(lane || "chat"),
+      prompt: normalizedPrompt,
+      classification: classification && typeof classification === "object" ? classification : null,
+      attachments: Array.isArray(attachments) ? attachments : [],
+      created_at: nowIso(),
+      updated_at: nowIso()
+    };
+    const turns = turnsBySession.get(session.id) || [];
+    turns.push(turn);
+    turnsBySession.set(session.id, turns);
+
+    session.run_id = run.id;
+    session.updated_at = nowIso();
+    sessions.set(session.id, session);
+
+    emitEvent({
+      runId: run.id,
+      type: "display.event",
+      payload: {
+        display_type: "user_message",
+        lane: "chat",
+        body: normalizedPrompt || "Attachment turn",
+        source_event_type: "entry.turn.user_message"
+      }
+    });
+    const assistantBody = normalizedPrompt
+      ? `社区执行已完成：${normalizedPrompt.slice(0, 320)}`
+      : "社区执行已完成：附件输入已接收。";
+    emitEvent({
+      runId: run.id,
+      type: "display.event",
+      payload: {
+        display_type: "assistant_reply",
+        lane: "chat",
+        body: assistantBody,
+        source_event_type: "entry.turn.assistant_reply"
+      }
+    });
+    emitEvent({
+      runId: run.id,
+      type: "run.completed",
+      payload: {
+        run_id: run.id,
+        status: "completed",
+        session_id: session.id,
+        turn_id: turn.id
+      }
+    });
+    updateRun(run.id, { status: "completed" });
+    return {
+      session: { ...session },
+      run: getRun(run.id),
+      turn
+    };
+  }
+
+  function getRunDetails(runId) {
+    const run = getRun(runId);
+    if (!run) return null;
+    return {
+      run,
+      events: listRunEvents(run.id, 0),
+      display_events: listRunDisplayEvents(run.id, 0),
+      display_event_contract: {
+        version: "v1.display-event-projection-main-thread-chat-only",
+        main_thread_allowed: ["user_message", "assistant_reply"],
+        lanes: ["chat", "task", "system", "receipt"]
+      }
+    };
   }
 
   function listSessions() {
@@ -358,6 +490,17 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
     return { ...byo };
   }
 
+  function getAccessStatus() {
+    return { ...accessState };
+  }
+
+  function setAccessStatus({ granted, source = "community_access_write" } = {}) {
+    accessState.full_access_granted = granted === true;
+    accessState.updated_at = nowIso();
+    accessState.source = normalizeString(source, "community_access_write");
+    return getAccessStatus();
+  }
+
   function createCapabilityGrant({ capabilityKey, scopeType = "workspace", scopeValue = "default", metadata = {} }) {
     const row = {
       id: randomId("grant"),
@@ -435,10 +578,17 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
     listSessions,
     getSession,
     touchSession,
+    createTurn,
+    listTurns,
+    listRunEvents,
+    listRunDisplayEvents,
+    getRunDetails,
     addAttachment,
     listAttachments,
     bindByoKey,
     getByoStatus,
+    getAccessStatus,
+    setAccessStatus,
     createCapabilityGrant,
     listCapabilityGrants,
     findCapabilityGrant,

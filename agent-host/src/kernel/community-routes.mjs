@@ -36,11 +36,12 @@ function buildPreflight(state, contracts, runtimeInfo) {
   const workspaces = state.listWorkspaces();
   const sessions = state.listSessions();
   const selectedWorkspace = runtimeInfo.selection?.workspace || null;
+  const access = state.getAccessStatus();
   return {
     ok: true,
     contract_version: String(contracts.entryPreflight.version || "v1"),
     host_connected: true,
-    full_access_granted: false,
+    full_access_granted: access.full_access_granted === true,
     openai_byo_bound: state.getByoStatus().bound,
     workspace_available: workspaces.length > 0,
     selected_workspace: selectedWorkspace,
@@ -91,6 +92,23 @@ export function registerCommunityRoutes({ registry, state, contracts, runtimeInf
           restricted_routes: boundaryMatchers.length,
           official_advanced_enabled: runtimeInfo.privateProviders?.authorized === true
         }
+      });
+    }
+  });
+
+  registry.addRoute({
+    method: "GET",
+    path: "/status",
+    source: "community",
+    handler: async ({ res }) => {
+      const access = state.getAccessStatus();
+      sendJson(res, 200, {
+        service: "agent-host",
+        bind: `${runtimeInfo.host}:${runtimeInfo.port}`,
+        status: "online",
+        full_access_granted: access.full_access_granted === true,
+        updated_at: access.updated_at,
+        source: access.source
       });
     }
   });
@@ -170,12 +188,34 @@ export function registerCommunityRoutes({ registry, state, contracts, runtimeInf
     source: "community",
     handler: async ({ res, match }) => {
       const runId = decodeURIComponent(match[1]);
+      const details = state.getRunDetails(runId);
+      if (!details) {
+        sendJson(res, 404, { error: "run_not_found", run_id: runId });
+        return;
+      }
+      sendJson(res, 200, details);
+    }
+  });
+
+  registry.addRoute({
+    method: "GET",
+    pattern: /^\/runs\/([^/]+)\/events$/,
+    source: "community",
+    handler: async ({ res, match, url }) => {
+      const runId = decodeURIComponent(match[1]);
       const run = state.getRun(runId);
       if (!run) {
         sendJson(res, 404, { error: "run_not_found", run_id: runId });
         return;
       }
-      sendJson(res, 200, { run });
+      const sinceSeqRaw = url.searchParams.get("since_seq");
+      const sinceSeq = Number.isFinite(Number(sinceSeqRaw)) ? Number(sinceSeqRaw) : 0;
+      const events = state.listRunEvents(runId, sinceSeq);
+      sendJson(res, 200, {
+        run_id: runId,
+        since_seq: sinceSeq,
+        events
+      });
     }
   });
 
@@ -301,10 +341,26 @@ export function registerCommunityRoutes({ registry, state, contracts, runtimeInf
   }
 
   registry.addRoute({
+    method: "GET",
+    path: "/session/byo-key",
+    source: "community",
+    handler: async ({ res }) => {
+      sendJson(res, 200, byoStatusPayload());
+    }
+  });
+
+  registry.addRoute({
     method: "POST",
     path: "/session/byo-key",
     source: "community",
     handler: async ({ req, res }) => handleByoBind(req, res)
+  });
+
+  registry.addRoute({
+    method: "DELETE",
+    path: "/session/byo-key",
+    source: "community",
+    handler: async ({ res }) => handleByoClear(res)
   });
 
   const runtimeWorkspaceSelection = {
@@ -312,6 +368,66 @@ export function registerCommunityRoutes({ registry, state, contracts, runtimeInf
     selection: null
   };
   runtimeInfo.selection = runtimeWorkspaceSelection;
+
+  function accessStatusPayload() {
+    const access = state.getAccessStatus();
+    return {
+      full_access_granted: access.full_access_granted === true,
+      granted: access.full_access_granted === true,
+      updated_at: access.updated_at,
+      source: access.source
+    };
+  }
+
+  for (const routePath of ["/access/status", "/entry/access/status"]) {
+    registry.addRoute({
+      method: "GET",
+      path: routePath,
+      source: "community",
+      handler: async ({ res }) => {
+        sendJson(res, 200, accessStatusPayload());
+      }
+    });
+  }
+
+  for (const routePath of ["/access/grant", "/entry/access/grant"]) {
+    registry.addRoute({
+      method: "POST",
+      path: routePath,
+      source: "community",
+      handler: async ({ req, res }) => {
+        const body = await readJsonBody(req);
+        const access = state.setAccessStatus({
+          granted: body.granted !== false,
+          source: normalizeString(body.source, "community_access_grant")
+        });
+        sendJson(res, 200, {
+          ok: true,
+          grant: {
+            granted: access.full_access_granted,
+            source: access.source,
+            created_at: access.updated_at
+          },
+          ...accessStatusPayload()
+        });
+      }
+    });
+  }
+
+  for (const routePath of ["/access/recheck", "/entry/access/recheck"]) {
+    registry.addRoute({
+      method: "POST",
+      path: routePath,
+      source: "community",
+      handler: async ({ res }) => {
+        sendJson(res, 200, {
+          ok: true,
+          checked_at: nowIso(),
+          ...accessStatusPayload()
+        });
+      }
+    });
+  }
 
   registry.addRoute({
     method: "GET",
@@ -400,8 +516,10 @@ export function registerCommunityRoutes({ registry, state, contracts, runtimeInf
     path: "/entry/sessions",
     source: "community",
     handler: async ({ res }) => {
+      const sessions = state.listSessions();
       sendJson(res, 200, {
-        sessions: state.listSessions()
+        sessions,
+        last_session: sessions[0] || null
       });
     }
   });
@@ -440,6 +558,70 @@ export function registerCommunityRoutes({ registry, state, contracts, runtimeInf
       sendJson(res, 200, {
         ok: true,
         session: state.getSession(last.id)
+      });
+    }
+  });
+
+  registry.addRoute({
+    method: "POST",
+    path: "/entry/sessions/continue-last",
+    source: "community",
+    handler: async ({ res }) => {
+      const last = state.listSessions()[0] || null;
+      if (!last) {
+        sendJson(res, 404, { error: "last_session_not_found" });
+        return;
+      }
+      state.touchSession(last.id);
+      sendJson(res, 200, {
+        ok: true,
+        session: state.getSession(last.id)
+      });
+    }
+  });
+
+  registry.addRoute({
+    method: "GET",
+    pattern: /^\/entry\/sessions\/([^/]+)\/turns$/,
+    source: "community",
+    handler: async ({ res, match }) => {
+      const sessionId = decodeURIComponent(match[1]);
+      const session = state.getSession(sessionId);
+      if (!session) {
+        sendJson(res, 404, { error: "entry_session_not_found", session_id: sessionId });
+        return;
+      }
+      sendJson(res, 200, {
+        session,
+        turns: state.listTurns(sessionId)
+      });
+    }
+  });
+
+  registry.addRoute({
+    method: "POST",
+    pattern: /^\/entry\/sessions\/([^/]+)\/turns$/,
+    source: "community",
+    handler: async ({ req, res, match }) => {
+      const sessionId = decodeURIComponent(match[1]);
+      const body = await readJsonBody(req);
+      const created = state.createTurn({
+        sessionId,
+        prompt: typeof body.prompt === "string" ? body.prompt : typeof body.message === "string" ? body.message : "",
+        lane: normalizeString(body.lane, "chat"),
+        classification: body.classification && typeof body.classification === "object" ? body.classification : null,
+        attachments: Array.isArray(body.attachments) ? body.attachments : []
+      });
+      if (!created) {
+        sendJson(res, 404, { error: "entry_session_not_found", session_id: sessionId });
+        return;
+      }
+      sendJson(res, 201, {
+        ok: true,
+        session: created.session,
+        run: created.run,
+        turn: created.turn,
+        step_id: "step.entry.turn"
       });
     }
   });
