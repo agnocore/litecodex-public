@@ -4285,6 +4285,7 @@ function runLocalCommand(command, args, timeoutMs = 12000, options = {}) {
     cwd = path.resolve(cwd);
   }
   const shellMode = typeof options?.shell === "boolean" ? options.shell : process.platform === "win32";
+  const startedMs = Date.now();
   const result = spawnSync(command, args, {
     cwd,
     env,
@@ -4293,6 +4294,13 @@ function runLocalCommand(command, args, timeoutMs = 12000, options = {}) {
     shell: shellMode,
     timeout: parsePositiveInt(timeoutMs, 12000)
   });
+  const durationMs = Math.max(0, Date.now() - startedMs);
+  const shellLabel =
+    typeof options?.shell_label === "string" && options.shell_label.trim()
+      ? options.shell_label.trim()
+      : shellMode
+        ? inferHostShellType()
+        : "direct_exec";
 
   const stdout = redactWithSecrets(redactSensitiveText(result.stdout || ""), secretValues);
   const stderr = redactWithSecrets(redactSensitiveText(result.stderr || ""), secretValues);
@@ -4301,6 +4309,8 @@ function runLocalCommand(command, args, timeoutMs = 12000, options = {}) {
     status: result.status,
     signal: result.signal || null,
     cwd,
+    shell: shellLabel,
+    duration_ms: durationMs,
     stdout,
     stderr,
     error_message: result.error
@@ -5561,12 +5571,70 @@ function parseSymbolQuery(rawQuery) {
   };
 }
 
+function normalizeSearchStem(value) {
+  const raw = normalizeSearchPathQuery(value || "");
+  if (!raw) {
+    return "";
+  }
+  return path
+    .basename(raw)
+    .toLowerCase()
+    .replace(/\.[a-z0-9]{1,8}$/i, "")
+    .replace(/[-_][a-z0-9]{1,8}$/i, "")
+    .trim();
+}
+
+function boundedLevenshteinDistance(a, b, maxDistance = 3) {
+  const left = String(a || "");
+  const right = String(b || "");
+  if (!left || !right) {
+    return null;
+  }
+  if (left === right) {
+    return 0;
+  }
+  const lengthGap = Math.abs(left.length - right.length);
+  if (lengthGap > maxDistance) {
+    return null;
+  }
+  const prev = new Array(right.length + 1);
+  const curr = new Array(right.length + 1);
+  for (let j = 0; j <= right.length; j += 1) {
+    prev[j] = j;
+  }
+  for (let i = 1; i <= left.length; i += 1) {
+    curr[0] = i;
+    let rowMin = curr[0];
+    for (let j = 1; j <= right.length; j += 1) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      const next = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + cost
+      );
+      curr[j] = next;
+      if (next < rowMin) {
+        rowMin = next;
+      }
+    }
+    if (rowMin > maxDistance) {
+      return null;
+    }
+    for (let j = 0; j <= right.length; j += 1) {
+      prev[j] = curr[j];
+    }
+  }
+  return prev[right.length] <= maxDistance ? prev[right.length] : null;
+}
+
 function scoreProjectIndexEntry(entry, context = {}) {
   const query = String(context.query || "").toLowerCase();
+  const queryStem = String(context.query_stem || "").toLowerCase();
   const variants = Array.isArray(context.variants) ? context.variants : [];
   const tokens = Array.isArray(context.tokens) ? context.tokens : [];
   const relLower = String(entry.rel_lower || "").toLowerCase();
   const basenameLower = String(entry.basename_lower || "").toLowerCase();
+  const basenameStem = basenameLower.replace(/\.[a-z0-9]{1,8}$/i, "");
   const reasons = [];
   let score = 0;
 
@@ -5585,7 +5653,6 @@ function scoreProjectIndexEntry(entry, context = {}) {
       continue;
     }
     const variantBasename = path.basename(variant);
-    const basenameStem = basenameLower.replace(/\.[a-z0-9]{1,8}$/i, "");
     const variantStem = String(variantBasename || "").toLowerCase().replace(/\.[a-z0-9]{1,8}$/i, "");
     if (relLower === variant) {
       score = Math.max(score, 1);
@@ -5619,6 +5686,20 @@ function scoreProjectIndexEntry(entry, context = {}) {
     if (basenameLower.includes(variantBasename)) {
       score = Math.max(score, 0.72);
       reasons.push("fuzzy_basename_match");
+    }
+  }
+
+  if (queryStem && basenameStem && queryStem.length >= 4 && basenameStem.length >= 4 && queryStem !== basenameStem) {
+    const maxLength = Math.max(queryStem.length, basenameStem.length);
+    const maxDistance = Math.max(2, Math.floor(maxLength * 0.34));
+    const distance = boundedLevenshteinDistance(queryStem, basenameStem, maxDistance);
+    if (distance !== null) {
+      const similarity = 1 - distance / maxLength;
+      if (similarity >= 0.72) {
+        const typoScore = Math.min(0.9, 0.79 + (similarity - 0.72) * 0.45);
+        score = Math.max(score, typoScore);
+        reasons.push("typo_basename_match");
+      }
     }
   }
 
@@ -5730,11 +5811,12 @@ function searchProjectFiles({
   const parsedSymbol = parseSymbolQuery(query);
   const queryText = parsedSymbol.path_query || normalizeSearchPathQuery(query);
   const variants = buildSearchQueryVariants(queryText).map((x) => x.toLowerCase());
+  const ignoredTokenSet = new Set(["js", "mjs", "cjs", "ts", "tsx", "jsx", "py", "json", "md", "txt", "html", "css", "yml", "yaml"]);
   const tokenParts = queryText
     .toLowerCase()
     .split(/[\\/._\- ]+/)
     .map((part) => part.trim())
-    .filter((part) => part.length >= 2);
+    .filter((part) => part.length >= 3 && !ignoredTokenSet.has(part));
 
   const sessionHints = listEntrySessionTargetFiles(sessionId, 60);
   const projectHints = listEntryProjectRecentFiles(project.id, 60);
@@ -5742,6 +5824,7 @@ function searchProjectFiles({
   const projectHintSet = new Set(projectHints.map((row) => String(row.rel_path || "")));
   const queryContext = {
     query: queryText.toLowerCase(),
+    query_stem: normalizeSearchStem(queryText),
     variants,
     tokens: tokenParts,
     session_hint_set: sessionHintSet,
@@ -6663,6 +6746,193 @@ function shouldUseEntryModelTaskExecutor({ promptText, resolver, resolvedTargets
   return false;
 }
 
+function inferPromptExpectation(promptText) {
+  const prompt = String(promptText || "").trim();
+  if (!prompt) {
+    return null;
+  }
+  const lower = prompt.toLowerCase();
+  if (/\ba\s*\*\s*b\b/.test(lower)) {
+    return {
+      label: "contains a * b",
+      regex: /\ba\s*\*\s*b\b/m
+    };
+  }
+  if (/\ba\s*\+\s*b\b/.test(lower)) {
+    return {
+      label: "contains a + b",
+      regex: /\ba\s*\+\s*b\b/m
+    };
+  }
+  const literalMatch = prompt.match(/["'`](.{2,120})["'`]/);
+  if (literalMatch && literalMatch[1]) {
+    const needle = literalMatch[1].trim();
+    if (needle.length >= 2) {
+      return {
+        label: `contains literal "${needle}"`,
+        regex: new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "m")
+      };
+    }
+  }
+  return null;
+}
+
+function buildTaskAcceptanceSummary({
+  promptText,
+  targetFiles,
+  touchedFiles,
+  verifyResult,
+  verificationPlan,
+  checks
+}) {
+  const touched = Array.isArray(touchedFiles) ? touchedFiles : [];
+  const targets = Array.isArray(targetFiles) ? targetFiles : [];
+  const verifyCommands = Array.isArray(verificationPlan?.commands) ? verificationPlan.commands : [];
+  const passCount = Array.isArray(checks) ? checks.filter((x) => x && x.passed === true).length : 0;
+  const totalCount = Array.isArray(checks) ? checks.length : 0;
+  return [
+    touched.length > 0 ? `Updated files: ${touched.slice(0, 12).join(", ")}` : "No file changes were needed.",
+    verifyCommands.length > 0
+      ? `Verification: ${verifyCommands.slice(0, 6).join(" ; ")}`
+      : "Verification: skipped (no runnable verifier discovered).",
+    `Acceptance checks: ${passCount}/${totalCount} passed.`,
+    `Target files: ${targets.slice(0, 12).join(", ") || "none"}.`,
+    `Prompt: ${summarizeText(promptText, 220) || ""}`,
+    verifyResult?.passed ? "Verify result: passed." : `Verify result: failed (${summarizeText(verifyResult?.failure_summary || "", 200) || "unknown"}).`
+  ].join("\n");
+}
+
+function runEntryTaskAcceptanceExecutor({
+  runId,
+  stepId,
+  sessionId,
+  turnId,
+  turnIndex,
+  promptText,
+  workspacePath,
+  targetFiles,
+  touchedFiles,
+  verifyResult,
+  verificationPlan
+}) {
+  emitEvent(runId, "acceptance.started", {
+    step_id: stepId,
+    session_id: sessionId,
+    turn_id: turnId,
+    turn_index: turnIndex,
+    lane: "task",
+    status: "running"
+  });
+  const checks = [];
+  const targets = Array.isArray(targetFiles) ? targetFiles : [];
+  const touched = Array.isArray(touchedFiles) ? touchedFiles : [];
+  const verifyPassed = Boolean(verifyResult?.passed);
+
+  const targetExists = targets.every((rel) => {
+    const normalized = normalizeRelativeFilePath(rel);
+    if (!normalized) return false;
+    return fs.existsSync(workspaceAbsolutePath(workspacePath, normalized));
+  });
+  checks.push({
+    check: "target_files_exist",
+    passed: targetExists,
+    details: targets
+  });
+
+  checks.push({
+    check: "verify_passed",
+    passed: verifyPassed,
+    details: summarizeText(verifyResult?.failure_summary || "passed", 220) || null
+  });
+
+  const expectation = inferPromptExpectation(promptText);
+  if (expectation && targets.length > 0) {
+    let matched = false;
+    for (const rel of targets) {
+      const normalized = normalizeRelativeFilePath(rel);
+      if (!normalized) continue;
+      const abs = workspaceAbsolutePath(workspacePath, normalized);
+      if (!fs.existsSync(abs)) continue;
+      let text = "";
+      try {
+        text = fs.readFileSync(abs, "utf8");
+      } catch {
+        text = "";
+      }
+      if (expectation.regex.test(text)) {
+        matched = true;
+        break;
+      }
+    }
+    checks.push({
+      check: "prompt_expectation_match",
+      passed: matched,
+      details: expectation.label
+    });
+  }
+
+  checks.push({
+    check: "workspace_write_or_noop_observed",
+    passed: touched.length > 0 || verifyPassed,
+    details: touched.length > 0 ? touched : "noop_with_verify"
+  });
+
+  const passed = checks.every((item) => item && item.passed === true);
+  const summary = buildTaskAcceptanceSummary({
+    promptText,
+    targetFiles: targets,
+    touchedFiles: touched,
+    verifyResult,
+    verificationPlan,
+    checks
+  });
+  const reviewBody = [
+    "# Entry Task Review",
+    "",
+    `- run_id: ${runId}`,
+    `- step_id: ${stepId}`,
+    `- lane: task`,
+    `- status: ${passed ? "passed" : "failed"}`,
+    "",
+    "## Summary",
+    "",
+    summary,
+    "",
+    "## Checks",
+    "",
+    ...checks.map((item, idx) => `${idx + 1}. ${item.check}: ${item.passed ? "passed" : "failed"}${item.details ? ` (${summarizeText(JSON.stringify(item.details), 260)})` : ""}`)
+  ].join("\n");
+  const reviewDisk = writeRunArtifact(runId, `review_${Date.now()}.md`, `${reviewBody}\n`);
+  const reviewRef = toRepoRelative(reviewDisk);
+  emitEvent(runId, "review.available", {
+    step_id: stepId,
+    session_id: sessionId,
+    turn_id: turnId,
+    turn_index: turnIndex,
+    lane: "task",
+    artifact_ref: reviewRef,
+    status: "completed",
+    summary: summarizeText(summary, 600)
+  });
+  emitEvent(runId, passed ? "acceptance.completed" : "acceptance.failed", {
+    step_id: stepId,
+    session_id: sessionId,
+    turn_id: turnId,
+    turn_index: turnIndex,
+    lane: "task",
+    artifact_ref: reviewRef,
+    checks,
+    status: passed ? "completed" : "failed"
+  });
+  return {
+    passed,
+    summary,
+    artifact_ref: reviewRef,
+    checks,
+    failure_summary: passed ? null : summarizeText(checks.filter((x) => !x.passed).map((x) => x.check).join(","), 220)
+  };
+}
+
 async function executeEntryModelTaskRuntime({
   runId,
   stepId,
@@ -6686,6 +6956,7 @@ async function executeEntryModelTaskRuntime({
   let touchedFiles = [];
   let verifyResult = { passed: false, results: [], failure_summary: "not_run" };
   let verifySelection = { commands: [], candidates: [], signals: {} };
+  let acceptanceResult = null;
   let lastFailure = "";
   let attemptsUsed = 0;
 
@@ -6701,6 +6972,19 @@ async function executeEntryModelTaskRuntime({
       task_id: taskId,
       target_files: targetFiles
     });
+    if (isRepair) {
+      emitEvent(runId, "repair.started", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane: "task",
+        attempt: attemptsUsed,
+        task_id: taskId,
+        target_files: targetFiles,
+        status: "running"
+      });
+    }
 
     const modelTask = {
       task_id: taskId,
@@ -6758,6 +7042,32 @@ async function executeEntryModelTaskRuntime({
           results: [],
           failure_summary: null
         };
+        acceptanceResult = runEntryTaskAcceptanceExecutor({
+          runId,
+          stepId,
+          sessionId,
+          turnId,
+          turnIndex,
+          promptText,
+          workspacePath,
+          targetFiles,
+          touchedFiles: [],
+          verifyResult,
+          verificationPlan: verifySelection
+        });
+        if (!acceptanceResult.passed) {
+          lastFailure = summarizeText(acceptanceResult.failure_summary || "entry_task_acceptance_failed", 300);
+          emitEvent(runId, "entry.task.acceptance.failed_controlled", {
+            step_id: stepId,
+            session_id: sessionId,
+            turn_id: turnId,
+            turn_index: turnIndex,
+            attempt: attemptsUsed,
+            task_id: taskId,
+            reason: lastFailure
+          });
+          continue;
+        }
         break;
       }
       verifyResult = runVerificationPipeline({
@@ -6767,6 +7077,47 @@ async function executeEntryModelTaskRuntime({
         commands: verifyCommands,
         stepId
       });
+      if (verifyResult.passed) {
+        acceptanceResult = runEntryTaskAcceptanceExecutor({
+          runId,
+          stepId,
+          sessionId,
+          turnId,
+          turnIndex,
+          promptText,
+          workspacePath,
+          targetFiles,
+          touchedFiles: [],
+          verifyResult,
+          verificationPlan: verifySelection
+        });
+        if (acceptanceResult.passed) {
+          break;
+        }
+        lastFailure = summarizeText(acceptanceResult.failure_summary || "entry_task_acceptance_failed", 300);
+        emitEvent(runId, "entry.task.acceptance.failed_controlled", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          attempt: attemptsUsed,
+          task_id: taskId,
+          reason: lastFailure
+        });
+        continue;
+      }
+      if (isRepair) {
+        emitEvent(runId, "repair.completed", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          lane: "task",
+          attempt: attemptsUsed,
+          task_id: taskId,
+          status: "failed"
+        });
+      }
       if (verifyResult.passed) {
         break;
       }
@@ -6840,16 +7191,108 @@ async function executeEntryModelTaskRuntime({
         results: [],
         failure_summary: null
       };
+      acceptanceResult = runEntryTaskAcceptanceExecutor({
+        runId,
+        stepId,
+        sessionId,
+        turnId,
+        turnIndex,
+        promptText,
+        workspacePath,
+        targetFiles,
+        touchedFiles,
+        verifyResult,
+        verificationPlan: verifySelection
+      });
+      if (!acceptanceResult.passed) {
+        lastFailure = summarizeText(acceptanceResult.failure_summary || "entry_task_acceptance_failed", 300);
+        emitEvent(runId, "entry.task.acceptance.failed_controlled", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          attempt: attemptsUsed,
+          task_id: taskId,
+          reason: lastFailure
+        });
+        continue;
+      }
       break;
     }
 
-    verifyResult = runVerificationPipeline({
+      verifyResult = runVerificationPipeline({
       runId,
       taskId,
       workspaceRoot: workspacePath,
       commands: verifyCommands,
       stepId
     });
+    if (verifyResult.passed) {
+      acceptanceResult = runEntryTaskAcceptanceExecutor({
+        runId,
+        stepId,
+        sessionId,
+        turnId,
+        turnIndex,
+        promptText,
+        workspacePath,
+        targetFiles,
+        touchedFiles,
+        verifyResult,
+        verificationPlan: verifySelection
+      });
+      if (acceptanceResult.passed) {
+        if (isRepair) {
+          emitEvent(runId, "repair.completed", {
+            step_id: stepId,
+            session_id: sessionId,
+            turn_id: turnId,
+            turn_index: turnIndex,
+            lane: "task",
+            attempt: attemptsUsed,
+            task_id: taskId,
+            status: "completed"
+          });
+        }
+        break;
+      }
+      lastFailure = summarizeText(acceptanceResult.failure_summary || "entry_task_acceptance_failed", 300);
+      emitEvent(runId, "entry.task.acceptance.failed_controlled", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        attempt: attemptsUsed,
+        task_id: taskId,
+        reason: lastFailure
+      });
+      if (isRepair) {
+        emitEvent(runId, "repair.completed", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          lane: "task",
+          attempt: attemptsUsed,
+          task_id: taskId,
+          status: "failed"
+        });
+      }
+      continue;
+    }
+
+    if (isRepair) {
+      emitEvent(runId, "repair.completed", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane: "task",
+        attempt: attemptsUsed,
+        task_id: taskId,
+        status: "failed"
+      });
+    }
     if (verifyResult.passed) {
       break;
     }
@@ -6875,33 +7318,31 @@ async function executeEntryModelTaskRuntime({
         latency_ms: Number(usage.latency_ms || 0)
       }
     : null;
-  if (!verifyResult.passed) {
+  if (!verifyResult.passed || !acceptanceResult?.passed) {
     return {
       ok: false,
-      reason: summarizeText(lastFailure || verifyResult.failure_summary || "entry_task_runtime_failed", 320),
+      reason: summarizeText(lastFailure || acceptanceResult?.failure_summary || verifyResult.failure_summary || "entry_task_runtime_failed", 320),
       task_id: taskId,
       target_files: targetFiles,
       touched_files: touchedFiles,
       verify_result: verifyResult,
       verification_plan: verifySelection,
+      acceptance_result: acceptanceResult || null,
       attempts_used: attemptsUsed,
       usage: usageSummary
     };
   }
 
-  const touchedPreview = (touchedFiles.length > 0 ? touchedFiles : []).slice(0, 8).join(", ");
-  const verifyPreview = (verifySelection?.commands || []).slice(0, 4).join(" ; ");
+  const acceptanceSummary = summarizeText(acceptanceResult?.summary || "", 1600) || "";
   return {
     ok: true,
-    message: [
-      touchedPreview ? `Updated files: ${touchedPreview}` : "No file changes were needed.",
-      verifyPreview ? `Verification: ${verifyPreview}` : "Verification: skipped (no runnable verifier discovered)"
-    ].join("\n"),
+    message: acceptanceSummary || "Task accepted.",
     task_id: taskId,
     target_files: targetFiles,
     touched_files: touchedFiles,
     verify_result: verifyResult,
     verification_plan: verifySelection,
+    acceptance_result: acceptanceResult,
     attempts_used: attemptsUsed,
     usage: usageSummary
   };
@@ -7231,6 +7672,17 @@ async function executeEntryTurnRun(runId, plan = {}) {
         symbol: item.symbol || null
       }))
     });
+    emitEvent(runId, "command.proposed", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane,
+      command: commandPlan.command,
+      args: commandPlan.args,
+      cwd: workspacePath,
+      status: "proposed"
+    });
     emitEvent(runId, "executor.started", {
       step_id: stepId,
       session_id: sessionId,
@@ -7244,7 +7696,21 @@ async function executeEntryTurnRun(runId, plan = {}) {
       turn_id: turnId,
       lane,
       command: commandPlan.command,
-      args: commandPlan.args
+      args: commandPlan.args,
+      cwd: workspacePath,
+      shell: inferHostShellType()
+    });
+    emitEvent(runId, "command.started", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane,
+      command: commandPlan.command,
+      args: commandPlan.args,
+      cwd: workspacePath,
+      shell: inferHostShellType(),
+      status: "running"
     });
 
     const startedAt = nowIso();
@@ -7256,6 +7722,50 @@ async function executeEntryTurnRun(runId, plan = {}) {
       shell: false
     });
     const completedAt = nowIso();
+    const stdoutRaw = String(result.stdout || "");
+    const stderrRaw = String(result.stderr || result.error_message || "");
+    if (stdoutRaw) {
+      const chunkSize = 1200;
+      const total = Math.max(1, Math.ceil(stdoutRaw.length / chunkSize));
+      for (let i = 0; i < total; i += 1) {
+        const chunk = stdoutRaw.slice(i * chunkSize, (i + 1) * chunkSize);
+        if (!chunk) continue;
+        emitEvent(runId, "command.stdout.chunk", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          lane,
+          command: commandPlan.command,
+          stream: "stdout",
+          chunk_index: i + 1,
+          chunk_total: total,
+          chunk,
+          status: "running"
+        });
+      }
+    }
+    if (stderrRaw) {
+      const chunkSize = 1200;
+      const total = Math.max(1, Math.ceil(stderrRaw.length / chunkSize));
+      for (let i = 0; i < total; i += 1) {
+        const chunk = stderrRaw.slice(i * chunkSize, (i + 1) * chunkSize);
+        if (!chunk) continue;
+        emitEvent(runId, "command.stdout.chunk", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          lane,
+          command: commandPlan.command,
+          stream: "stderr",
+          chunk_index: i + 1,
+          chunk_total: total,
+          chunk,
+          status: "running"
+        });
+      }
+    }
     const adapterRow = recordAdapterRun({
       runId,
       adapterId: "shell",
@@ -7278,6 +7788,22 @@ async function executeEntryTurnRun(runId, plan = {}) {
       ok: result.ok,
       exit_code: result.status,
       signal: result.signal || null
+    });
+    emitEvent(runId, "command.completed", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane,
+      command: commandPlan.command,
+      args: commandPlan.args,
+      cwd: result.cwd || workspacePath,
+      shell: result.shell || "direct_exec",
+      exit_code: result.status,
+      duration_ms: Number(result.duration_ms || 0),
+      stdout: summarizeText(result.stdout, 1400),
+      stderr: summarizeText(result.stderr || result.error_message, 1400),
+      status: result.ok ? "completed" : "failed"
     });
     emitEvent(runId, "executor.completed", {
       step_id: stepId,
@@ -7905,18 +8431,120 @@ function nextRunStatus(oldStatus, eventType) {
   return "running";
 }
 
-function emitEvent(runId, type, payload) {
+function eventStepIdFromPayload(payload) {
+  if (payload && typeof payload === "object" && typeof payload.step_id === "string" && payload.step_id.trim()) {
+    return payload.step_id.trim();
+  }
+  return null;
+}
+
+function inferRuntimeEventLane(type, payload, stepId = null) {
+  if (payload && typeof payload === "object" && typeof payload.lane === "string" && payload.lane.trim()) {
+    return payload.lane.trim();
+  }
+  const resolvedStepId = typeof stepId === "string" && stepId.trim() ? stepId.trim() : eventStepIdFromPayload(payload);
+  if (resolvedStepId) {
+    if (resolvedStepId.includes(".chat.")) return "chat";
+    if (resolvedStepId.includes(".task.")) return "task";
+  }
+  const eventType = String(type || "").toLowerCase();
+  if (eventType.startsWith("approval.") || eventType.startsWith("auth.")) {
+    return "approval";
+  }
+  if (
+    eventType.startsWith("command.") ||
+    eventType.startsWith("verify.") ||
+    eventType.startsWith("repair.") ||
+    eventType.startsWith("review.") ||
+    eventType.startsWith("acceptance.") ||
+    eventType.startsWith("deploy.") ||
+    eventType.startsWith("online.verification.") ||
+    eventType.startsWith("planner.") ||
+    eventType.startsWith("executor.") ||
+    eventType.startsWith("adapter.")
+  ) {
+    return "task";
+  }
+  if (eventType.startsWith("user.") || eventType.startsWith("assistant.")) {
+    return "chat";
+  }
+  return "system";
+}
+
+function inferRuntimeEventStatus(type, payload) {
+  if (payload && typeof payload === "object" && typeof payload.status === "string" && payload.status.trim()) {
+    return payload.status.trim();
+  }
+  const eventType = String(type || "").toLowerCase();
+  if (/(required|pending|waiting|prompted)/.test(eventType)) return "waiting_user";
+  if (/(started|requested|running|proposed|chunk)/.test(eventType)) return "running";
+  if (/(completed|verified|available|resumed|granted)/.test(eventType)) return "completed";
+  if (/(failed|rejected|timeout|cancelled|blocked|error)/.test(eventType)) return "failed";
+  return "unknown";
+}
+
+function inferRuntimeArtifactRef(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const keys = [
+    "artifact_ref",
+    "artifact_path",
+    "receipt_path",
+    "review_artifact_path",
+    "diff_artifact_path",
+    "stdout_artifact_path",
+    "stderr_artifact_path",
+    "replay_artifact_path",
+    "projection_artifact_path",
+    "evidence_path"
+  ];
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function buildRuntimeEventEnvelope(runId, seq, type, timestamp, payload) {
+  const stepId = eventStepIdFromPayload(payload);
+  return {
+    event_id: `evt_${runId}_${seq}`,
+    run_id: runId,
+    step_id: stepId,
+    kind: type,
+    lane: inferRuntimeEventLane(type, payload, stepId),
+    timestamp,
+    artifact_ref: inferRuntimeArtifactRef(payload),
+    status: inferRuntimeEventStatus(type, payload),
+    seq,
+    type,
+    ts: timestamp,
+    payload
+  };
+}
+
+function approvalMirrorEventType(type, payload = {}) {
+  const eventType = String(type || "");
+  if (eventType === "auth.required") return "approval.required";
+  if (eventType === "auth.challenge.emitted" || eventType === "auth.browser_opened" || eventType === "auth.command_rendered" || eventType === "auth.input_requested") {
+    return "approval.prompted";
+  }
+  if (eventType === "auth.waiting_user" || eventType === "auth.pending_user_action") return "approval.waiting_user";
+  if (eventType === "auth.dialog_closed_unconfirmed") return "approval.dialog_closed_unconfirmed";
+  if (eventType === "auth.failed" && payload.retryable === true) return "approval.retryable";
+  if (eventType === "auth.verified") return "approval.verified";
+  if (eventType === "auth.resumed_original_run") return "approval.resumed_original_run";
+  return null;
+}
+
+function emitEvent(runId, type, payload, options = {}) {
   const now = nowIso();
   const nextSeq = dbGet("SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM events WHERE run_id = ?", runId).n;
   const frontendCheck = validateFrontendContractPayload(type, payload);
-  const eventEnvelope = {
-    event_id: `evt_${runId}_${nextSeq}`,
-    run_id: runId,
-    seq: nextSeq,
-    type,
-    ts: now,
-    payload
-  };
+  const eventEnvelope = buildRuntimeEventEnvelope(runId, nextSeq, type, now, payload);
   if (frontendCheck.covered) {
     eventEnvelope.frontend_contract = {
       version: frontendEventContract.version,
@@ -7984,6 +8612,44 @@ function emitEvent(runId, type, payload) {
       client.write(frame);
     } catch {
       sseClients.delete(client);
+    }
+  }
+
+  if (!options || options.skip_mirror !== true) {
+    if (type === "step.requested") {
+      emitEvent(
+        runId,
+        "step.started",
+        {
+          ...(payload && typeof payload === "object" ? payload : {}),
+          status: "running"
+        },
+        { skip_mirror: true }
+      );
+    }
+    const mirrorType = approvalMirrorEventType(type, payload);
+    if (mirrorType) {
+      emitEvent(
+        runId,
+        mirrorType,
+        {
+          ...(payload && typeof payload === "object" ? payload : {}),
+          kind: mirrorType,
+          status: inferRuntimeEventStatus(mirrorType, payload || {})
+        },
+        { skip_mirror: true }
+      );
+      if (mirrorType === "approval.resumed_original_run") {
+        emitEvent(
+          runId,
+          "approval.resumed",
+          {
+            ...(payload && typeof payload === "object" ? payload : {}),
+            status: "completed"
+          },
+          { skip_mirror: true }
+        );
+      }
     }
   }
 
@@ -23116,12 +23782,13 @@ function runDetails(runId) {
   const events = dbAll(
     "SELECT seq, type, payload_json, created_at FROM events WHERE run_id = ? ORDER BY seq ASC",
     runId
-  ).map((row) => ({
-    seq: row.seq,
-    type: row.type,
-    created_at: row.created_at,
-    payload: JSON.parse(row.payload_json)
-  }));
+  ).map((row) => {
+    const payload = parsePayloadJson(row.payload_json);
+    return {
+      ...buildRuntimeEventEnvelope(runId, row.seq, row.type, row.created_at, payload),
+      created_at: row.created_at
+    };
+  });
   const displayEvents = projectDisplayEventsFromRuntimeEvents(events);
   const authSessions = dbAll("SELECT * FROM auth_sessions WHERE run_id = ? ORDER BY created_at DESC", runId);
   const grants = dbAll("SELECT * FROM capability_grants WHERE run_id = ? ORDER BY verified_at DESC", runId);
@@ -23650,12 +24317,8 @@ function getRunEventsSinceSeq(runId, sinceSeq, limit = 500) {
   ).map((row) => {
     const payload = parsePayloadJson(row.payload_json);
     const event = {
-      event_id: `evt_${runId}_${row.seq}`,
-      run_id: runId,
-      seq: row.seq,
-      type: row.type,
-      ts: row.created_at,
-      payload
+      ...buildRuntimeEventEnvelope(runId, row.seq, row.type, row.created_at, payload),
+      created_at: row.created_at
     };
     const projectedDisplayEvent = projectRuntimeEventToDisplayEvent({
       seq: row.seq,
@@ -35118,7 +35781,7 @@ function buildWorkspaceVerificationSelection({
 
   for (const [scriptName, scriptBody] of Object.entries(scripts)) {
     const lower = String(scriptName || "").toLowerCase();
-    if (!/(test|verify|check|lint|typecheck|smoke|ci)/i.test(lower)) {
+    if (!/(test|verify|check|lint|typecheck|smoke|ci|build|repro|scenario|case)/i.test(lower)) {
       continue;
     }
     const runCommand =
@@ -35134,6 +35797,12 @@ function buildWorkspaceVerificationSelection({
     }
     if (/(smoke|ci)/i.test(lower) && /(smoke|release|ship|deploy)/i.test(promptLower)) {
       score += 0.06;
+    }
+    if (/(build)/i.test(lower) && /(build|compile|bundle|构建)/i.test(promptLower)) {
+      score += 0.08;
+    }
+    if (/(repro|scenario|case)/i.test(lower) && /(repro|复现|重现|case)/i.test(promptLower)) {
+      score += 0.09;
     }
     if (extHints.has(".py") && /(python|pytest)/i.test(String(scriptBody || ""))) {
       score += 0.05;
@@ -35236,6 +35905,33 @@ function buildWorkspaceVerificationSelection({
       push(`node --check ${rel}`, 0.7, "node_check_signal", "workspace_signal");
     }
   }
+  if (/(repro|复现|重现|case)/i.test(promptLower)) {
+    for (const relRaw of Array.isArray(targetFiles) ? targetFiles : []) {
+      const rel = normalizeRelativeFilePath(relRaw);
+      if (!rel) continue;
+      const ext = path.extname(rel).toLowerCase();
+      if (![".js", ".mjs", ".cjs", ".ts", ".tsx", ".py"].includes(ext)) continue;
+      const base = path.basename(rel, ext);
+      const reproCandidates = [
+        `test/${base}.repro.js`,
+        `tests/${base}.repro.js`,
+        `test/${base}.case.js`,
+        `tests/${base}.case.js`,
+        `tests/test_${base}.py`,
+        `test/test_${base}.py`
+      ];
+      for (const reproRel of reproCandidates) {
+        const abs = path.join(root, reproRel);
+        if (!fs.existsSync(abs)) continue;
+        if (/\.py$/i.test(reproRel)) {
+          push(`python ${reproRel}`, 0.92, "focused_repro_signal", "workspace_signal");
+        } else {
+          push(`node ${reproRel}`, 0.92, "focused_repro_signal", "workspace_signal");
+        }
+        break;
+      }
+    }
+  }
 
   if (includeFallback) {
     for (const fallbackCommand of Array.isArray(fallbackCommands) ? fallbackCommands : []) {
@@ -35261,6 +35957,14 @@ function buildWorkspaceVerificationSelection({
     if (/(smoke|health|release|deploy)/i.test(promptLower) && /(smoke|ci)/i.test(commandLower)) {
       row.score += 0.04;
       row.reasons.add("prompt_smoke_signal");
+    }
+    if (/(build|compile|bundle|构建)/i.test(promptLower) && /(build|compile|bundle)/i.test(commandLower)) {
+      row.score += 0.05;
+      row.reasons.add("prompt_build_signal");
+    }
+    if (/(repro|复现|重现|case)/i.test(promptLower) && /(repro|scenario|case)/i.test(commandLower)) {
+      row.score += 0.07;
+      row.reasons.add("prompt_repro_signal");
     }
     row.score = Math.max(0, Math.min(0.999, Number(row.score.toFixed(3))));
   }
@@ -35291,7 +35995,9 @@ function buildWorkspaceVerificationSelection({
       prompt_hints: {
         verify: /(verify|test|check)/i.test(promptLower),
         lint: /(lint|format|style)/i.test(promptLower),
-        smoke: /(smoke|health|release|deploy)/i.test(promptLower)
+        smoke: /(smoke|health|release|deploy)/i.test(promptLower),
+        build: /(build|compile|bundle|构建)/i.test(promptLower),
+        repro: /(repro|复现|重现|case)/i.test(promptLower)
       },
       workspace_root: root || null
     }
@@ -37695,11 +38401,50 @@ function evaluateReviewGate({ workspaceRoot, touchedFiles, stackProfile }) {
 }
 
 function runVerificationPipeline({ runId, taskId, workspaceRoot, commands, stepId }) {
+  const emitCommandChunks = (commandText, stream, text, lane = "task") => {
+    const raw = String(text || "");
+    if (!raw) return;
+    const chunkSize = 1200;
+    const total = Math.max(1, Math.ceil(raw.length / chunkSize));
+    for (let i = 0; i < total; i += 1) {
+      const chunk = raw.slice(i * chunkSize, (i + 1) * chunkSize);
+      if (!chunk) continue;
+      emitEvent(runId, "command.stdout.chunk", {
+        step_id: stepId,
+        task_id: taskId,
+        lane,
+        command: commandText,
+        stream: stream === "stderr" ? "stderr" : "stdout",
+        chunk_index: i + 1,
+        chunk_total: total,
+        chunk,
+        status: "running"
+      });
+    }
+  };
   const results = [];
   let passed = true;
   for (let i = 0; i < commands.length; i += 1) {
     const commandText = String(commands[i] || "").trim();
     if (!commandText) continue;
+    emitEvent(runId, "command.proposed", {
+      step_id: stepId,
+      task_id: taskId,
+      lane: "task",
+      stage_index: i + 1,
+      command: commandText,
+      cwd: workspaceRoot,
+      status: "proposed"
+    });
+    emitEvent(runId, "verify.started", {
+      step_id: stepId,
+      task_id: taskId,
+      lane: "task",
+      stage_index: i + 1,
+      command: commandText,
+      cwd: workspaceRoot,
+      status: "running"
+    });
     emitEvent(runId, "engineering.verify.started", {
       step_id: stepId,
       task_id: taskId,
@@ -37710,14 +38455,74 @@ function runVerificationPipeline({ runId, taskId, workspaceRoot, commands, stepI
     const parsed = splitCommand(commandText);
     if (!parsed.command) {
       const fail = { command: commandText, status: "failed", exit_code: -1, stdout_summary: "", stderr_summary: "command_parse_failed" };
+      emitEvent(runId, "command.started", {
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: workspaceRoot,
+        shell: "parse_failed",
+        status: "failed"
+      });
+      emitEvent(runId, "command.completed", {
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: workspaceRoot,
+        shell: "parse_failed",
+        exit_code: -1,
+        duration_ms: 0,
+        stdout: "",
+        stderr: "command_parse_failed",
+        status: "failed"
+      });
       results.push(fail);
       emitEvent(runId, "engineering.verify.completed", { step_id: stepId, task_id: taskId, stage_index: i + 1, ...fail });
+      emitEvent(runId, "verify.failed", {
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: workspaceRoot,
+        exit_code: -1,
+        status: "failed",
+        reason: "command_parse_failed"
+      });
       passed = false;
       break;
     }
+    emitEvent(runId, "command.started", {
+      step_id: stepId,
+      task_id: taskId,
+      lane: "task",
+      stage_index: i + 1,
+      command: commandText,
+      cwd: workspaceRoot,
+      status: "running"
+    });
     const started = nowIso();
     const res = runLocalCommand(parsed.command, parsed.args, 90000, { cwd: workspaceRoot });
     const completed = nowIso();
+    emitCommandChunks(commandText, "stdout", res.stdout, "task");
+    emitCommandChunks(commandText, "stderr", res.stderr || res.error_message || "", "task");
+    emitEvent(runId, "command.completed", {
+      step_id: stepId,
+      task_id: taskId,
+      lane: "task",
+      stage_index: i + 1,
+      command: commandText,
+      cwd: res.cwd || workspaceRoot,
+      shell: res.shell || null,
+      exit_code: normalizeExitCode(res.status),
+      duration_ms: Number(res.duration_ms || 0),
+      stdout: summarizeText(res.stdout, 1400),
+      stderr: summarizeText(res.stderr || res.error_message, 1400),
+      status: res.ok ? "completed" : "failed"
+    });
     recordAdapterRun({
       runId,
       adapterId: "shell.adapter.v1",
@@ -37734,6 +38539,9 @@ function runVerificationPipeline({ runId, taskId, workspaceRoot, commands, stepI
       command: commandText,
       status: res.ok ? "completed" : "failed",
       exit_code: normalizeExitCode(res.status),
+      cwd: res.cwd || workspaceRoot,
+      shell: res.shell || null,
+      duration_ms: Number(res.duration_ms || 0),
       stdout_summary: summarizeText(res.stdout, 800),
       stderr_summary: summarizeText(res.stderr || res.error_message, 800)
     };
@@ -37749,6 +38557,21 @@ function runVerificationPipeline({ runId, taskId, workspaceRoot, commands, stepI
     });
     results.push(payload);
     emitEvent(runId, "engineering.verify.completed", { step_id: stepId, task_id: taskId, stage_index: i + 1, ...payload });
+    if (!res.ok) {
+      emitEvent(runId, "verify.failed", {
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: res.cwd || workspaceRoot,
+        shell: res.shell || null,
+        exit_code: normalizeExitCode(res.status),
+        duration_ms: Number(res.duration_ms || 0),
+        reason: summarizeText(res.stderr || res.error_message || "verify_failed", 300),
+        status: "failed"
+      });
+    }
     if (!res.ok) {
       passed = false;
       break;
