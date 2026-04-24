@@ -80,10 +80,24 @@ const state = {
   sidebarSearch: "",
   pageSearch: "",
   composer: "",
+  composerComposing: false,
+  composerTokens: [],
+  composerSuggest: {
+    open: false,
+    kind: null,
+    query: "",
+    items: [],
+    selected: 0,
+    triggerStart: null,
+    triggerEnd: null,
+    loading: false
+  },
   attachments: [],
   imagePreview: null,
   reviewOpen: false,
+  panelsOpen: false,
   reviewTab: "changes",
+  openFolderRelPath: "",
   modal: null,
   pendingSend: null,
   byo: { ui: "loading", bound: false, validation: "unknown", error: null, key: "" },
@@ -434,6 +448,228 @@ function cloneAttachments(items) {
   }));
 }
 
+function cloneComposerTokens(items) {
+  return (Array.isArray(items) ? items : []).map((token) => ({
+    id: token.id || `tok_${Date.now()}_${Math.random().toString(16).slice(2, 7)}`,
+    kind: token.kind || "reference",
+    command: token.command || null,
+    rel_path: token.rel_path || null,
+    symbol: token.symbol || null,
+    label: token.label || ""
+  }));
+}
+
+function serializeComposerTokensForPayload() {
+  return cloneComposerTokens(state.composerTokens).map((token) => ({
+    kind: token.kind,
+    command: token.command,
+    rel_path: token.rel_path,
+    symbol: token.symbol,
+    label: token.label
+  }));
+}
+
+function currentProjectId() {
+  return String(currentWorkspace()?.id || currentSession()?.workspace_id || "").trim() || null;
+}
+
+function currentThreadId() {
+  const cs = currentSession();
+  if (cs?.id && !String(cs.id).startsWith("draft_")) {
+    return cs.id;
+  }
+  return null;
+}
+
+function closeComposerSuggest() {
+  state.composerSuggest = {
+    open: false,
+    kind: null,
+    query: "",
+    items: [],
+    selected: 0,
+    triggerStart: null,
+    triggerEnd: null,
+    loading: false
+  };
+}
+
+function detectComposerTriggerAtCaret(text, caret) {
+  const value = String(text || "");
+  const cursor = Number.isFinite(Number(caret)) ? Math.max(0, Math.min(value.length, Number(caret))) : value.length;
+  const head = value.slice(0, cursor);
+  const slashMatch = head.match(/(^|\s)(\/[a-z0-9._-]*)$/i);
+  if (slashMatch) {
+    const fragment = slashMatch[2] || "";
+    const triggerStart = head.length - fragment.length;
+    return {
+      kind: "slash",
+      query: fragment.slice(1),
+      triggerStart,
+      triggerEnd: cursor
+    };
+  }
+  const refMatch = head.match(/(^|\s)(@[^\s@]*)$/);
+  if (refMatch) {
+    const fragment = refMatch[2] || "";
+    const triggerStart = head.length - fragment.length;
+    return {
+      kind: "reference",
+      query: fragment.slice(1),
+      triggerStart,
+      triggerEnd: cursor
+    };
+  }
+  return null;
+}
+
+let composerSuggestRequestSeq = 0;
+
+async function fetchComposerSuggestions(trigger) {
+  const projectId = currentProjectId();
+  const threadId = currentThreadId();
+  if (!projectId) return [];
+  if (trigger.kind === "slash") {
+    const resolved = await api("/api/composer/resolve", {
+      method: "POST",
+      body: {
+        threadId,
+        projectId,
+        rawText: state.composer,
+        tokens: serializeComposerTokensForPayload(),
+        mode: state.currentClassification?.lane || "chat"
+      }
+    });
+    return (resolved?.suggestions?.commands || []).map((item) => ({
+      kind: "command",
+      id: item.id,
+      label: item.label || `/${item.id}`,
+      description: item.description || "",
+      needs_target: !!item.needs_target
+    }));
+  }
+  const searched = await api("/api/project/search-file", {
+    method: "POST",
+    body: {
+      threadId,
+      projectId,
+      query: trigger.query || "",
+      limit: 12,
+      include_directories: true,
+      include_symbols: true
+    }
+  });
+  return (searched?.candidates || []).map((item) => ({
+    kind: "reference",
+    type: item.type || "file",
+    rel_path: item.rel_path || null,
+    symbol: item.symbol || null,
+    label: item.type === "symbol" ? `@${item.rel_path}#${item.symbol}` : `@${item.rel_path}`,
+    confidence: item.confidence
+  }));
+}
+
+async function refreshComposerSuggest(text, caret) {
+  const trigger = detectComposerTriggerAtCaret(text, caret);
+  if (!trigger) {
+    if (!state.composerSuggest?.open) {
+      return;
+    }
+    closeComposerSuggest();
+    render({ keepComposerFocus: true, caret });
+    return;
+  }
+  const reqSeq = ++composerSuggestRequestSeq;
+  state.composerSuggest = {
+    open: true,
+    kind: trigger.kind,
+    query: trigger.query,
+    items: [],
+    selected: 0,
+    triggerStart: trigger.triggerStart,
+    triggerEnd: trigger.triggerEnd,
+    loading: true
+  };
+  render({ keepComposerFocus: true, caret });
+  try {
+    const items = await fetchComposerSuggestions(trigger);
+    if (reqSeq !== composerSuggestRequestSeq) return;
+    state.composerSuggest = {
+      open: true,
+      kind: trigger.kind,
+      query: trigger.query,
+      items,
+      selected: 0,
+      triggerStart: trigger.triggerStart,
+      triggerEnd: trigger.triggerEnd,
+      loading: false
+    };
+    render({ keepComposerFocus: true, caret });
+  } catch {
+    if (reqSeq !== composerSuggestRequestSeq) return;
+    closeComposerSuggest();
+    render({ keepComposerFocus: true, caret });
+  }
+}
+
+function applyComposerSuggestion(item) {
+  if (!item || typeof item !== "object") return;
+  if (item.kind === "command") {
+    state.composerTokens.push({
+      id: `tok_${Date.now()}_${Math.random().toString(16).slice(2, 7)}`,
+      kind: "command",
+      command: item.id,
+      rel_path: null,
+      symbol: null,
+      label: item.label || `/${item.id}`
+    });
+  } else if (item.kind === "reference") {
+    if (!item.rel_path) return;
+    state.composerTokens.push({
+      id: `tok_${Date.now()}_${Math.random().toString(16).slice(2, 7)}`,
+      kind: item.type === "symbol" ? "symbol" : item.type === "directory" ? "directory" : "reference",
+      command: null,
+      rel_path: item.rel_path,
+      symbol: item.symbol || null,
+      label: item.label || (item.type === "symbol" ? `@${item.rel_path}#${item.symbol}` : `@${item.rel_path}`)
+    });
+  }
+  const suggest = state.composerSuggest || {};
+  const start = Number.isFinite(Number(suggest.triggerStart)) ? Number(suggest.triggerStart) : null;
+  const end = Number.isFinite(Number(suggest.triggerEnd)) ? Number(suggest.triggerEnd) : null;
+  if (start !== null && end !== null && start >= 0 && end >= start) {
+    state.composer = `${state.composer.slice(0, start)}${state.composer.slice(end)}`.replace(/\s{2,}/g, " ");
+  }
+  const caret = start !== null && start >= 0 ? start : String(state.composer || "").length;
+  closeComposerSuggest();
+  render({ keepComposerFocus: true, caret });
+}
+
+function moveComposerSuggestSelection(delta) {
+  if (!state.composerSuggest?.open) return false;
+  const size = Array.isArray(state.composerSuggest.items) ? state.composerSuggest.items.length : 0;
+  if (size <= 0) return false;
+  const current = Number(state.composerSuggest.selected || 0);
+  const next = (current + delta + size) % size;
+  state.composerSuggest.selected = next;
+  render({ keepComposerFocus: true, caret: Number(state.composerSuggest.triggerEnd || state.composer.length) });
+  return true;
+}
+
+function commitComposerSuggestSelection() {
+  if (!state.composerSuggest?.open) return false;
+  const items = Array.isArray(state.composerSuggest.items) ? state.composerSuggest.items : [];
+  if (!items.length) return false;
+  const selected = items[Math.max(0, Math.min(items.length - 1, Number(state.composerSuggest.selected || 0)))];
+  applyComposerSuggestion(selected);
+  return true;
+}
+
+function removeComposerToken(tokenId) {
+  state.composerTokens = state.composerTokens.filter((token) => token.id !== tokenId);
+  render();
+}
+
 function sessionsVisible(list, search) {
   const q = String(search || "").trim().toLowerCase();
   return list
@@ -493,6 +729,7 @@ function buildClassificationInput(sessionId, prompt, attachments) {
   return {
     prompt,
     attachments,
+    tokens: serializeComposerTokensForPayload(),
     workspaceLabel: prettyWorkspaceLabel(currentWorkspace()),
     contextSummary,
     messages: buildSessionMessageContext(sessionId),
@@ -785,6 +1022,12 @@ function modalHtml() {
     return `<div class="modal-backdrop" data-action="close-modal-bg"><section class="modal"><header class="head"><h3>Bind OpenAI BYO</h3><button class="ghost-btn" data-action="close-modal">Close</button></header><div class="body"><div class="note">Local only, current browser scope, no plaintext backend persistence.</div><div class="field"><input class="input" type="password" data-bind="byo-key" value="${esc(state.byo.key)}" placeholder="sk-..."/></div><div class="note">State: ${esc(byoUiLabel(state.byo.ui))} / ${esc(state.byo.validation)} / ${esc(state.byo.error || "-")}</div></div><footer class="foot"><button class="ghost-btn" data-action="insert-invalid">Insert invalid key</button><button class="ghost-btn" data-action="clear-byo">Clear</button><button class="primary-btn" data-action="bind-byo">Bind + Validate</button></footer></section></div>`;
   }
 
+  if (state.modal === "open-folder") {
+    const workspace = currentWorkspace();
+    const label = prettyWorkspaceLabel(workspace);
+    return `<div class="modal-backdrop" data-action="close-modal-bg"><section class="modal"><header class="head"><h3>Open Folder</h3><button class="ghost-btn" data-action="close-modal">Close</button></header><div class="body"><div class="note">Host action only. This does not create run artifacts.</div><div class="field"><label>Project</label><div class="note">${esc(label)}</div></div><div class="field"><label>Folder path (relative to project root, leave empty for root)</label><input class="input" data-bind="open-folder-relpath" value="${esc(state.openFolderRelPath || "")}" placeholder="entry/service/public"/></div></div><footer class="foot"><button class="ghost-btn" data-action="close-modal">Cancel</button><button class="primary-btn" data-action="confirm-open-folder">Open</button></footer></section></div>`;
+  }
+
   return `<div class="modal-backdrop" data-action="close-modal-bg"><section class="modal"><header class="head"><h3>Start Session</h3><button class="ghost-btn" data-action="close-modal">Close</button></header><div class="body"><div class="note">Send is blocked until session exists.</div></div><footer class="foot"><button class="ghost-btn" data-action="continue-last">Continue Last Session</button><button class="primary-btn" data-action="new-session">New Session</button></footer></section></div>`;
 }
 
@@ -793,7 +1036,48 @@ function previewOverlayHtml() {
   return `<div class="preview-overlay" data-action="close-image-preview-bg"><section class="preview-panel"><button class="preview-close" data-action="close-image-preview">Close</button><img src="${esc(state.imagePreview.preview)}" alt="preview"/><div class="preview-caption">${esc(state.imagePreview.name || "image")}</div></section></div>`;
 }
 
-function render() {
+function captureComposerSnapshot() {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLTextAreaElement)) return null;
+  if (active.getAttribute("data-bind") !== "composer") return null;
+  return {
+    focused: true,
+    start: Number.isFinite(active.selectionStart) ? active.selectionStart : null,
+    end: Number.isFinite(active.selectionEnd) ? active.selectionEnd : null
+  };
+}
+
+function restoreComposerSnapshot(snapshot) {
+  if (!snapshot?.focused) return;
+  const composer = appEl.querySelector("textarea[data-bind='composer']");
+  if (!(composer instanceof HTMLTextAreaElement) || composer.disabled) return;
+  const len = String(composer.value || "").length;
+  const startRaw = Number.isFinite(snapshot.start) ? Number(snapshot.start) : len;
+  const endRaw = Number.isFinite(snapshot.end) ? Number(snapshot.end) : startRaw;
+  const start = Math.max(0, Math.min(len, startRaw));
+  const end = Math.max(start, Math.min(len, endRaw));
+  try {
+    composer.focus({ preventScroll: true });
+  } catch {
+    composer.focus();
+  }
+  try {
+    composer.setSelectionRange(start, end);
+  } catch {
+    // no-op
+  }
+}
+
+function render(options = null) {
+  const explicitSnapshot =
+    options && typeof options === "object" && (options.keepComposerFocus || Number.isFinite(options.caret))
+      ? {
+          focused: true,
+          start: Number.isFinite(options.caret) ? Number(options.caret) : null,
+          end: Number.isFinite(options.caret) ? Number(options.caret) : null
+        }
+      : null;
+  const composerSnapshot = explicitSnapshot || captureComposerSnapshot();
   if (state.loading) {
     appEl.innerHTML = `<div style="padding:24px;">Loading entry workbench...</div>`;
     modalRoot.innerHTML = "";
@@ -806,15 +1090,63 @@ function render() {
   modalRoot.innerHTML = `${modalHtml()}${previewOverlayHtml()}`;
   bindInputs();
   syncThreadViewport();
+  restoreComposerSnapshot(composerSnapshot);
 }
 
 function bindInputs() {
   const composer = appEl.querySelector("textarea[data-bind='composer']");
   if (composer) {
+    composer.addEventListener("compositionstart", () => {
+      state.composerComposing = true;
+    });
+    composer.addEventListener("compositionend", (e) => {
+      state.composerComposing = false;
+      state.composer = e.target.value;
+      void refreshComposerSuggest(state.composer, e.target.selectionStart);
+    });
     composer.addEventListener("input", (e) => {
       state.composer = e.target.value;
+      if (state.composerComposing || e.isComposing) return;
+      void refreshComposerSuggest(state.composer, e.target.selectionStart);
     });
     composer.addEventListener("keydown", (e) => {
+      if (state.composerComposing || e.isComposing) {
+        return;
+      }
+      if (state.composerSuggest?.open) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          moveComposerSuggestSelection(1);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          moveComposerSuggestSelection(-1);
+          return;
+        }
+        if (e.key === "Tab") {
+          e.preventDefault();
+          commitComposerSuggestSelection();
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeComposerSuggest();
+          render();
+          return;
+        }
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          if (commitComposerSuggestSelection()) {
+            return;
+          }
+        }
+      }
+      if (e.key === "Backspace" && !state.composer.trim() && state.composerTokens.length > 0) {
+        state.composerTokens = state.composerTokens.slice(0, -1);
+        render({ keepComposerFocus: true, caret: 0 });
+        return;
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         triggerSendIntent("enter").catch((err) => toast(String(err.message || err), "bad"));
@@ -830,7 +1162,7 @@ function bindInputs() {
         state.attachments.push(await makeAttachment(file, "screenshot"));
       }
       toast("Screenshot pasted", "ok");
-      render();
+      render({ keepComposerFocus: true, caret: composer.selectionStart });
     });
   }
 
@@ -884,6 +1216,9 @@ function bindInputs() {
 
   const pathInput = modalRoot.querySelector("input[data-bind='workspace-path']");
   if (pathInput) pathInput.addEventListener("input", (e) => { state.workspaceForm.workspacePath = e.target.value; });
+
+  const openFolderInput = modalRoot.querySelector("input[data-bind='open-folder-relpath']");
+  if (openFolderInput) openFolderInput.addEventListener("input", (e) => { state.openFolderRelPath = e.target.value; });
 
   const wkConfirm = modalRoot.querySelector("input[data-bind='workspace-confirm']");
   if (wkConfirm) wkConfirm.addEventListener("change", (e) => { state.workspaceForm.confirmed = !!e.target.checked; });
@@ -984,13 +1319,14 @@ async function realizeDraft(prompt) {
 
 function queuePendingSend(reason) {
   const text = String(state.composer || "").trim();
-  if (!text && !state.attachments.length) return null;
+  if (!text && !state.attachments.length && state.composerTokens.length === 0) return null;
   if (state.pendingSend) return state.pendingSend;
   state.pendingSend = {
     id: `pending_${Date.now()}`,
     reason: reason || "send_intent",
     createdAt: now(),
     composer: state.composer,
+    composerTokens: cloneComposerTokens(state.composerTokens),
     attachments: cloneAttachments(state.attachments),
     classification: null
   };
@@ -1000,6 +1336,7 @@ function queuePendingSend(reason) {
 function restorePendingSendSnapshot() {
   if (!state.pendingSend) return;
   state.composer = state.pendingSend.composer;
+  state.composerTokens = cloneComposerTokens(state.pendingSend.composerTokens || []);
   state.attachments = cloneAttachments(state.pendingSend.attachments);
 }
 
@@ -1094,35 +1431,45 @@ async function copyText(text) {
   }
 }
 
-async function requestOpenFolder(pathText) {
-  const out = await api("/entry/workspace/open-folder", {
+async function requestOpenFolder(projectId, relPath = null) {
+  const out = await api("/api/host/open-folder", {
     method: "POST",
-    body: { workspace_path: pathText }
+    body: {
+      projectId,
+      relPath
+    }
   });
   return {
-    ok: out?.ok === true && out?.opened === true,
-    workspacePath: typeof out?.workspace_path === "string" ? out.workspace_path : pathText
+    ok: out?.ok === true && out?.accepted === true,
+    workspacePath: typeof out?.host_action?.target_path === "string" ? out.host_action.target_path : null
   };
 }
 
-async function openWorkspaceFolder() {
-  const p = currentWorkspace()?.workspace_path;
-  if (!p) {
+async function openWorkspaceFolder(relPath = null) {
+  const workspace = currentWorkspace();
+  if (!workspace?.id) {
     toast("No workspace selected", "warn");
     return;
   }
+  const normalizedRelPath = typeof relPath === "string" && relPath.trim() ? relPath.trim() : null;
   try {
-    const result = await requestOpenFolder(p);
+    const result = await requestOpenFolder(workspace.id, normalizedRelPath);
     if (result.ok) {
-      log("workspace_action", { action: "open_folder", ok: true, workspace_path: result.workspacePath });
-      toast("Workspace folder opened on host", "ok");
+      log("workspace_action", {
+        action: "open_folder",
+        ok: true,
+        workspace_path: result.workspacePath,
+        rel_path: normalizedRelPath
+      });
+      toast(normalizedRelPath ? `Folder opened: ${normalizedRelPath}` : "Workspace folder opened on host", "ok");
       return;
     }
   } catch (error) {
     log("workspace_action", {
       action: "open_folder",
       ok: false,
-      workspace_path: p,
+      workspace_path: workspace.workspace_path,
+      rel_path: normalizedRelPath,
       error: String(error?.message || error)
     });
   }
@@ -1331,6 +1678,10 @@ function openFolderButtonTitle() {
   return "Open Folder";
 }
 
+function togglePanelsButtonTitle() {
+  return state.panelsOpen ? "Hide Main Chat + Review" : "Open Main Chat + Review";
+}
+
 function copyPathButtonTitle() {
   return "Copy Path";
 }
@@ -1340,7 +1691,9 @@ function homeThreadHeaderTitle() {
 }
 
 function composePlaceholder() {
-  return isSendLockedByRunState() ? "Run in progress. Use Stop or Resume." : "Enter send / Shift+Enter newline";
+  return isSendLockedByRunState()
+    ? "Run in progress. Use Stop or Resume."
+    : "Type message (/ for commands, @ to add files) · Shift+Enter newline";
 }
 
 function sendButtonTitle() {
@@ -1382,11 +1735,27 @@ function renderReviewPane() {
 function renderComposer(atts) {
   const runLocked = isSendLockedByRunState();
   const showStop = runLocked && !state.canResume;
-  return `<section class="composer" id="composerArea">${atts ? `<div class="attachment-tray">${atts}</div>` : ""}<textarea data-bind="composer" placeholder="${composePlaceholder()}" ${runLocked ? "disabled" : ""}>${esc(state.composer)}</textarea><div class="composer-actions"><div class="left-actions"><button class="ghost-btn" data-action="attach-upload" ${runLocked ? "disabled" : ""}>${uploadButtonTitle()}</button><button class="ghost-btn" data-action="attach-paste-text" ${runLocked ? "disabled" : ""}>${pasteButtonTitle()}</button><button class="ghost-btn" data-action="attach-screenshot" ${runLocked ? "disabled" : ""}>${screenshotButtonTitle()}</button></div><div class="right-actions">${state.canResume ? `<button class="ghost-btn" data-action="resume">${resumeButtonTitle()}</button>` : ""}${showStop ? `<button class="danger-btn" data-action="stop">${stopButtonTitle()}</button>` : ""}<button class="primary-btn" data-action="send" ${runLocked ? "disabled" : ""}>${sendButtonTitle()}</button></div></div></section>`;
+  const tokenTray = state.composerTokens.length
+    ? `<div class="composer-token-tray">${state.composerTokens
+        .map(
+          (token) =>
+            `<span class="composer-token"><span>${esc(token.label || token.command || token.rel_path || token.symbol || "token")}</span><button class="ghost-btn composer-token-remove" data-action="composer-token-remove" data-id="${esc(token.id)}" ${runLocked ? "disabled" : ""}>x</button></span>`
+        )
+        .join("")}</div>`
+    : "";
+  const suggestItems = Array.isArray(state.composerSuggest?.items) ? state.composerSuggest.items : [];
+  const suggestHtml = state.composerSuggest?.open
+    ? `<div class="composer-suggest">${state.composerSuggest.loading ? `<div class="composer-suggest-loading">Loading...</div>` : suggestItems.length ? suggestItems
+        .map((item, idx) => `<button class="composer-suggest-item ${idx === Number(state.composerSuggest.selected || 0) ? "active" : ""}" data-action="composer-suggest-pick" data-index="${idx}" ${runLocked ? "disabled" : ""}><div class="composer-suggest-label">${esc(item.label || item.id || "")}</div><div class="composer-suggest-meta">${esc(item.description || item.type || "")}</div></button>`)
+        .join("") : `<div class="composer-suggest-empty">No matches</div>`}</div>`
+    : "";
+  return `<section class="composer" id="composerArea">${atts ? `<div class="attachment-tray">${atts}</div>` : ""}${tokenTray}<textarea data-bind="composer" placeholder="${composePlaceholder()}" ${runLocked ? "disabled" : ""}>${esc(state.composer)}</textarea>${suggestHtml}<div class="composer-actions"><div class="left-actions"><button class="ghost-btn" data-action="attach-upload" ${runLocked ? "disabled" : ""}>${uploadButtonTitle()}</button><button class="ghost-btn" data-action="attach-paste-text" ${runLocked ? "disabled" : ""}>${pasteButtonTitle()}</button><button class="ghost-btn" data-action="attach-screenshot" ${runLocked ? "disabled" : ""}>${screenshotButtonTitle()}</button></div><div class="right-actions">${state.canResume ? `<button class="ghost-btn" data-action="resume">${resumeButtonTitle()}</button>` : ""}${showStop ? `<button class="danger-btn" data-action="stop">${stopButtonTitle()}</button>` : ""}<button class="primary-btn" data-action="send" ${runLocked ? "disabled" : ""}>${sendButtonTitle()}</button></div></div></section>`;
 }
 
 function renderHomeMain(workspace, cls, atts) {
-  return `<section class="main-shell"><div class="main-center"><header class="main-head"><div class="main-head-row"><h1>${homeThreadHeaderTitle()}</h1><div class="row"><span class="chip ${state.context.assembled ? "ok" : "warn"}">autocontext:${state.context.assembled ? "ready" : "pending"}</span><span class="chip ${state.context.compacted ? "ok" : "warn"}">compact:${state.context.compacted ? "active" : "idle"}</span><span class="chip ${state.context.resumed ? "ok" : "warn"}">resume:${state.context.resumed ? "yes" : "no"}</span><span class="chip ${isSendLockedByRunState() ? "warn" : "ok"}">run:${esc(state.run.status || "idle")}</span>${cls ? `<span class="chip ${cls.lane === "task" ? "ok" : "warn"}">intent:${esc(cls.intent || "-")}</span><span class="chip ${cls.riskLevel === "approval_required" ? "bad" : cls.riskLevel === "guarded" ? "warn" : "ok"}">risk:${esc(cls.riskLevel || "low")}</span>` : ""}</div></div><div class="meta">${renderHomeHeaderMeta(workspace, cls)}</div><div class="row main-head-actions"><button class="ghost-btn" data-action="open-modal-workspace">${switchWorkspaceButtonTitle()}</button><button class="ghost-btn" data-action="open-folder">${openFolderButtonTitle()}</button><button class="ghost-btn" data-action="copy-workspace-path">${copyPathButtonTitle()}</button></div></header><section class="thread" id="homeThread">${renderThreadCardsHtml()}</section>${renderComposer(atts)}</div>${renderReviewPane()}</section>`;
+  const threadHtml = state.panelsOpen ? `<section class="thread" id="homeThread">${renderThreadCardsHtml()}</section>` : "";
+  const reviewHtml = state.panelsOpen ? renderReviewPane() : "";
+  return `<section class="main-shell ${state.panelsOpen ? "panels-open" : "panels-hidden"}"><div class="main-center"><header class="main-head"><div class="main-head-row"><h1>${homeThreadHeaderTitle()}</h1><div class="row"><span class="chip ${state.context.assembled ? "ok" : "warn"}">autocontext:${state.context.assembled ? "ready" : "pending"}</span><span class="chip ${state.context.compacted ? "ok" : "warn"}">compact:${state.context.compacted ? "active" : "idle"}</span><span class="chip ${state.context.resumed ? "ok" : "warn"}">resume:${state.context.resumed ? "yes" : "no"}</span><span class="chip ${isSendLockedByRunState() ? "warn" : "ok"}">run:${esc(state.run.status || "idle")}</span>${cls ? `<span class="chip ${cls.lane === "task" ? "ok" : "warn"}">intent:${esc(cls.intent || "-")}</span><span class="chip ${cls.riskLevel === "approval_required" ? "bad" : cls.riskLevel === "guarded" ? "warn" : "ok"}">risk:${esc(cls.riskLevel || "low")}</span>` : ""}</div></div><div class="meta">${renderHomeHeaderMeta(workspace, cls)}</div><div class="row main-head-actions"><button class="ghost-btn" data-action="open-modal-workspace">${switchWorkspaceButtonTitle()}</button><button class="ghost-btn" data-action="open-folder">${openFolderButtonTitle()}</button><button class="ghost-btn" data-action="copy-workspace-path">${copyPathButtonTitle()}</button><button class="ghost-btn" data-action="toggle-panels">${togglePanelsButtonTitle()}</button></div></header>${threadHtml}${renderComposer(atts)}</div>${reviewHtml}</section>`;
 }
 
 function renderSessionListItemTitle(session) {
@@ -1543,8 +1912,12 @@ async function waitForRunTerminal(sessionId, runId, { timeoutMs = 120000 } = {})
   return latestStatus;
 }
 
-async function runRuntimeLane(pending, sess, detail) {
-  const prompt = normalizePrompt(state.composer);
+async function runRuntimeLane(pending, sess, detail, resolvedComposer = null) {
+  const tokenPrompt = state.composerTokens.map((token) => token.label || "").filter(Boolean).join(" ");
+  const prompt = normalizePrompt(state.composer || tokenPrompt);
+  const rawText = String(state.composer || "").trim();
+  const tokenPayload = serializeComposerTokensForPayload();
+  const projectId = currentProjectId();
   const payloadAttachments = state.attachments
     .map((a) => serializeAttachmentForTurn(a))
     .filter(Boolean);
@@ -1562,11 +1935,35 @@ async function runRuntimeLane(pending, sess, detail) {
       method: "POST",
       body: {
         prompt,
+        raw_text: rawText,
         lane: detail.lane,
+        mode: detail.lane,
+        project_id: projectId,
+        tokens: tokenPayload,
         classification: compactClassification(detail),
-        attachments: payloadAttachments
+        attachments: payloadAttachments,
+        resolver: resolvedComposer
       }
     });
+
+    if (created?.host_action) {
+      state.pendingSend = null;
+      state.composer = "";
+      state.composerTokens = [];
+      state.attachments = [];
+      closeComposerSuggest();
+      const actionSummary = String(created?.host_action?.action || "host_action");
+      appendDisplayEvent(sess.id, DISPLAY_EVENT_TYPES.USER_MESSAGE, rawText || prompt, {
+        source: "composer_host_action_user",
+        lane: "chat"
+      });
+      appendDisplayEvent(sess.id, DISPLAY_EVENT_TYPES.ASSISTANT_REPLY, `Host action accepted: ${actionSummary}`, {
+        source: "composer_host_action_reply",
+        lane: "chat"
+      });
+      toast("Host action executed", "ok");
+      return;
+    }
 
     const runId = String(created?.run?.id || created?.session?.run_id || "").trim();
     if (!runId) {
@@ -1584,7 +1981,9 @@ async function runRuntimeLane(pending, sess, detail) {
     state.run.status = String(created?.run?.status || "running");
     state.pendingSend = null;
     state.composer = "";
+    state.composerTokens = [];
     state.attachments = [];
+    closeComposerSuggest();
 
     await syncRunEventsFromBackend(sess.id, runId, { bootstrap: true });
     const finalStatus = await waitForRunTerminal(sess.id, runId, { timeoutMs: 120000 });
@@ -1610,18 +2009,81 @@ async function runRuntimeLane(pending, sess, detail) {
   }
 }
 
-async function runChatLane(pending, sess, detail) {
-  return runRuntimeLane(pending, sess, detail);
+async function runChatLane(pending, sess, detail, resolvedComposer = null) {
+  return runRuntimeLane(pending, sess, detail, resolvedComposer);
 }
 
-async function runTaskLane(pending, sess, detail) {
-  return runRuntimeLane(pending, sess, detail);
+async function runTaskLane(pending, sess, detail, resolvedComposer = null) {
+  return runRuntimeLane(pending, sess, detail, resolvedComposer);
+}
+
+async function resolveComposerForSend(sess, detail) {
+  const payload = {
+    threadId: sess?.id || null,
+    projectId: currentProjectId(),
+    rawText: state.composer,
+    tokens: serializeComposerTokensForPayload(),
+    mode: detail?.lane || "chat"
+  };
+  return api("/api/composer/resolve", {
+    method: "POST",
+    body: payload
+  });
+}
+
+async function executeComposerHostAction(sess, resolvedComposer) {
+  const hostAction = resolvedComposer?.hostAction;
+  if (!(hostAction && typeof hostAction === "object")) return false;
+  const actionType = String(hostAction.type || "").trim();
+  const endpoint =
+    actionType === "open-folder"
+      ? "/api/host/open-folder"
+      : actionType === "open-file"
+        ? "/api/host/open-file"
+        : actionType === "reveal-path"
+          ? "/api/host/reveal-path"
+          : null;
+  if (!endpoint) return false;
+
+  const body = {
+    projectId: hostAction.project_id || currentProjectId()
+  };
+  if (hostAction.rel_path) {
+    body.relPath = hostAction.rel_path;
+  }
+  const result = await api(endpoint, {
+    method: "POST",
+    body
+  });
+  const rawPrompt = normalizePrompt(state.composer || state.composerTokens.map((token) => token.label || "").join(" "));
+  if (rawPrompt) {
+    appendDisplayEvent(sess.id, DISPLAY_EVENT_TYPES.USER_MESSAGE, rawPrompt, {
+      source: "composer_host_action_user",
+      lane: "chat"
+    });
+  }
+  const targetText = hostAction.rel_path ? ` ${hostAction.rel_path}` : "";
+  appendDisplayEvent(sess.id, DISPLAY_EVENT_TYPES.ASSISTANT_REPLY, `Host action accepted: ${actionType}${targetText}`.trim(), {
+    source: "composer_host_action_reply",
+    lane: "chat"
+  });
+  state.pendingSend = null;
+  state.composer = "";
+  state.composerTokens = [];
+  state.attachments = [];
+  closeComposerSuggest();
+  toast("Host action executed", "ok");
+  log("composer_host_action", { action: actionType, result });
+  saveThreads();
+  render();
+  return true;
 }
 
 async function runSendPipeline(pending) {
   restorePendingSendSnapshot();
-  const prompt = normalizePrompt(state.composer);
-  if (!prompt && !state.attachments.length) {
+  const tokenPrompt = state.composerTokens.map((token) => token.label || "").filter(Boolean).join(" ");
+  const prompt = normalizePrompt(state.composer || tokenPrompt);
+  if (!prompt && !state.attachments.length && state.composerTokens.length === 0) {
     state.pendingSend = null;
     return;
   }
@@ -1629,7 +2091,7 @@ async function runSendPipeline(pending) {
   const sess = await ensureConcreteSession(prompt);
   if (!sess) return;
 
-  const detail = applyLaneOverrides(
+  let detail = applyLaneOverrides(
     classifyLaneDetailed(
       buildClassificationInput(sess.id, prompt, state.attachments)
     ),
@@ -1640,6 +2102,47 @@ async function runSendPipeline(pending) {
   pending.classification = compactClassification(detail);
   state.currentClassification = pending.classification;
   state.run.lane = detail.lane;
+  const resolvedComposer = await resolveComposerForSend(sess, detail);
+
+  if (resolvedComposer?.needsClarification?.required) {
+    const userText = prompt || normalizePrompt(state.composer);
+    if (userText) {
+      appendDisplayEvent(sess.id, DISPLAY_EVENT_TYPES.USER_MESSAGE, userText, {
+        source: "composer_clarify_user",
+        lane: "chat"
+      });
+    }
+    appendDisplayEvent(
+      sess.id,
+      DISPLAY_EVENT_TYPES.ASSISTANT_REPLY,
+      resolvedComposer.needsClarification.message || "Target not found in this project. Copy the file into project root and retry.",
+      {
+        source: "composer_clarify_reply",
+        lane: "chat"
+      }
+    );
+    state.pendingSend = null;
+    state.composer = "";
+    state.composerTokens = [];
+    closeComposerSuggest();
+    saveThreads();
+    render();
+    return;
+  }
+
+  if (resolvedComposer?.taskAction && detail.lane !== "task") {
+    detail = {
+      ...detail,
+      lane: "task",
+      mode: "execution",
+      intent: String(resolvedComposer.taskAction.type || detail.intent || "task")
+    };
+  }
+
+  if (await executeComposerHostAction(sess, resolvedComposer)) {
+    return;
+  }
+
   log("lane_classified", {
     lane: detail.lane,
     mode: detail.mode,
@@ -1656,10 +2159,10 @@ async function runSendPipeline(pending) {
   });
 
   if (detail.lane === "chat") {
-    await runChatLane(pending, sess, detail);
+    await runChatLane(pending, sess, detail, resolvedComposer);
     return;
   }
-  await runTaskLane(pending, sess, detail);
+  await runTaskLane(pending, sess, detail, resolvedComposer);
 }
 
 async function attemptSendFromPending(trigger) {
@@ -1735,6 +2238,18 @@ document.addEventListener("click", async (e) => {
   const action = a.getAttribute("data-action");
 
   try {
+    if (action === "composer-token-remove") {
+      removeComposerToken(a.getAttribute("data-id"));
+      return;
+    }
+    if (action === "composer-suggest-pick") {
+      const idx = Number(a.getAttribute("data-index"));
+      const items = Array.isArray(state.composerSuggest?.items) ? state.composerSuggest.items : [];
+      if (Number.isFinite(idx) && idx >= 0 && idx < items.length) {
+        applyComposerSuggestion(items[idx]);
+      }
+      return;
+    }
     if (action === "send") return await triggerSendIntent("send_button");
     if (action === "stop") {
       state.stopRequested = true;
@@ -1746,6 +2261,11 @@ document.addEventListener("click", async (e) => {
       return;
     }
     if (action === "resume") return await resumeFlow();
+    if (action === "toggle-panels") {
+      state.panelsOpen = !state.panelsOpen;
+      render();
+      return;
+    }
     if (action === "toggle-review") {
       state.reviewOpen = !state.reviewOpen;
       render();
@@ -1896,7 +2416,16 @@ document.addEventListener("click", async (e) => {
       return;
     }
     if (action === "open-folder") {
-      await openWorkspaceFolder();
+      state.openFolderRelPath = "";
+      state.modal = "open-folder";
+      render();
+      return;
+    }
+    if (action === "confirm-open-folder") {
+      const relPath = String(state.openFolderRelPath || "").trim();
+      await openWorkspaceFolder(relPath || null);
+      state.modal = null;
+      render();
       return;
     }
     if (action === "copy-workspace-path") {

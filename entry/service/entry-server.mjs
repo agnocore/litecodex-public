@@ -19,6 +19,7 @@ const repoRoot = path.resolve(thisDir, "..", "..");
 const staticRoot = resolveFrontendStaticRoot();
 const SPA_FALLBACK_PATHS = new Set(["/", "/settings", "/sessions"]);
 const PROXY_EXACT_PATHS = new Set([
+  "/api",
   "/events",
   "/runs",
   "/entry",
@@ -31,6 +32,7 @@ const PROXY_EXACT_PATHS = new Set([
   "/frontend-event-contract"
 ]);
 const PROXY_PREFIXES = [
+  "/api/",
   "/entry/",
   "/runs/",
   "/auth/",

@@ -239,6 +239,14 @@ select {
   overflow: hidden;
 }
 
+.main-shell.panels-hidden .main-center {
+  justify-content: flex-end;
+}
+
+.main-shell.panels-hidden .main-head {
+  margin-bottom: 8px;
+}
+
 .main-center {
   min-width: 0;
   min-height: 0;
@@ -395,6 +403,81 @@ select {
   border-radius: 10px;
   padding: 10px;
   background: #fff;
+}
+
+.main-shell.panels-hidden .composer textarea {
+  min-height: 180px;
+}
+
+.composer-token-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.composer-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #c9d7e9;
+  background: #eef4ff;
+  color: #24466a;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.composer-token-remove {
+  min-width: 20px;
+  height: 20px;
+  line-height: 1;
+  padding: 0;
+}
+
+.composer-suggest {
+  margin-top: 6px;
+  border: 1px solid #d4deea;
+  border-radius: 10px;
+  background: #fff;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.composer-suggest-item {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #edf2f8;
+  background: #fff;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.composer-suggest-item:last-child {
+  border-bottom: 0;
+}
+
+.composer-suggest-item.active {
+  background: #eef5ff;
+}
+
+.composer-suggest-label {
+  font-size: 13px;
+  color: #193750;
+}
+
+.composer-suggest-meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #5d7085;
+}
+
+.composer-suggest-loading,
+.composer-suggest-empty {
+  padding: 10px;
+  font-size: 12px;
+  color: #5d7085;
 }
 
 .composer-actions {

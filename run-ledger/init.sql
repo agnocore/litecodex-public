@@ -2376,8 +2376,57 @@ CREATE TABLE IF NOT EXISTS entry_sessions (
   FOREIGN KEY (run_id) REFERENCES runs (id)
 );
 
+CREATE TABLE IF NOT EXISTS entry_session_turns (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  turn_index INTEGER NOT NULL,
+  lane TEXT NOT NULL,
+  prompt_summary TEXT,
+  step_id TEXT,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES entry_sessions (id),
+  FOREIGN KEY (run_id) REFERENCES runs (id)
+);
+
+CREATE TABLE IF NOT EXISTS entry_project_recent_files (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  rel_path TEXT NOT NULL,
+  basename TEXT NOT NULL,
+  hit_count INTEGER NOT NULL,
+  source TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_used_at TEXT NOT NULL,
+  UNIQUE (workspace_id, rel_path),
+  FOREIGN KEY (workspace_id) REFERENCES entry_workspaces (id)
+);
+
+CREATE TABLE IF NOT EXISTS entry_session_target_files (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  rel_path TEXT NOT NULL,
+  basename TEXT NOT NULL,
+  hit_count INTEGER NOT NULL,
+  source TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_used_at TEXT NOT NULL,
+  UNIQUE (session_id, rel_path),
+  FOREIGN KEY (session_id) REFERENCES entry_sessions (id),
+  FOREIGN KEY (workspace_id) REFERENCES entry_workspaces (id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_host_access_grants_scope ON host_access_grants (access_scope, updated_at);
 CREATE INDEX IF NOT EXISTS idx_entry_workspaces_status ON entry_workspaces (status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_entry_workspace_selections_time ON entry_workspace_selections (selected_at);
 CREATE INDEX IF NOT EXISTS idx_entry_sessions_workspace ON entry_sessions (workspace_path, updated_at);
 CREATE INDEX IF NOT EXISTS idx_entry_sessions_run ON entry_sessions (run_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_entry_session_turns_session ON entry_session_turns (session_id, turn_index DESC);
+CREATE INDEX IF NOT EXISTS idx_entry_session_turns_run ON entry_session_turns (run_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_entry_project_recent_files_workspace ON entry_project_recent_files (workspace_id, last_used_at DESC);
+CREATE INDEX IF NOT EXISTS idx_entry_session_target_files_session ON entry_session_target_files (session_id, last_used_at DESC);
