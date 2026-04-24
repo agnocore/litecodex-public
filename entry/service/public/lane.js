@@ -37,6 +37,16 @@ const REQUEST_PREFIX_HINTS = [
   /^(please|can\s+you|could\s+you|help\s+me|need\s+you|continue|keep\s+going|based\s+on\s+the\s+above)/i
 ];
 
+const DIRECT_COPY_REQUEST_PATTERNS = [
+  /复制粘贴|可直接复制|可直接使用|一键使用|直接运行|完整代码|完整源码/i,
+  /\bcopy\s*paste\b|\bready\s*to\s*run\b|\bfull\s*source\s*code\b/i
+];
+
+const CODE_PROTECTION_REQUEST_PATTERNS = [
+  /保护代码|代码保护|权限边界|边界|授权|许可证|license|签名|防拷贝|不可复制|kernel/i,
+  /\bobfuscat(e|ion)\b|\bcode\s+protection\b|\bsigned\s+bundle\b|\bruntime\s+attestation\b/i
+];
+
 const CODE_CONTEXT_PATTERNS = [
   /```[\s\S]*?```/,
   /function\s+[A-Za-z_$][\w$]*\s*\(/,
@@ -1021,6 +1031,28 @@ function requiresTools({ artifactIds, lane, actionIds, hasAttachments }) {
   return false;
 }
 
+function deriveBoundaryPolicy({ prompt, actionIds = [], artifactIds = [], riskScore = 0 }) {
+  const text = normalizePrompt(prompt);
+  const wantsDirectCopy = DIRECT_COPY_REQUEST_PATTERNS.some((pattern) => pattern.test(text));
+  const wantsProtection = CODE_PROTECTION_REQUEST_PATTERNS.some((pattern) => pattern.test(text));
+  const codeCentric =
+    artifactIds.includes("artifact.code") ||
+    actionIds.some((id) => ["task.implement", "task.generate", "task.modify", "task.refactor"].includes(id));
+
+  const protectedRuntime = codeCentric && (wantsProtection || wantsDirectCopy);
+  const baselineBoundaries = ["path_jail", "tool_allowlist", "scoped_tokens"];
+  const protectedBoundaries = ["signed_bundle_only", "runtime_attestation", "integrity_check", ...baselineBoundaries];
+
+  return {
+    profile: protectedRuntime ? "protected_runtime" : "standard",
+    delivery: protectedRuntime ? "signed_runtime_bundle" : "source_or_patch",
+    copyPolicy: protectedRuntime ? "deny_plain_source_distribution" : "allow_plain_source_distribution",
+    kernel: protectedRuntime ? "isolated_worker_kernel" : "default_worker_kernel",
+    boundaries: protectedRuntime ? protectedBoundaries : baselineBoundaries,
+    riskHint: riskScore >= 6 ? "approval_required" : riskScore >= 3 ? "guarded" : "low"
+  };
+}
+
 function buildLaneScores({ modeScores, actionMatches, artifactIds, attachmentSummary, prompt, previousClassification }) {
   const scores = { chat: 0, task: 0 };
   const reasons = [];
@@ -1134,6 +1166,12 @@ export function classifyLaneDetailed(input = {}) {
 
   if (forceLane === "chat" || forceLane === "task") {
     const forcedIntent = previousClassification?.intent || (forceLane === "task" ? "implement" : "generic_chat");
+    const boundaryPolicy = deriveBoundaryPolicy({
+      prompt,
+      actionIds: [],
+      artifactIds: buildArtifactIds([], attachmentSummary),
+      riskScore: 0
+    });
     return {
       lane: forceLane,
       mode: forceLane === "task" ? "execution" : "qa",
@@ -1153,6 +1191,7 @@ export function classifyLaneDetailed(input = {}) {
         artifacts: [],
         risks: []
       },
+      boundaryPolicy,
       prompt,
       contextText,
       attachments,
@@ -1163,6 +1202,12 @@ export function classifyLaneDetailed(input = {}) {
   if (isSocialOnly(prompt) && attachments.length === 0) {
     const socialAction = scoreRegistry(promptText, registry.actions).matched.find((m) => m.mode === "social");
     const intent = socialAction?.intent || "greeting";
+    const boundaryPolicy = deriveBoundaryPolicy({
+      prompt,
+      actionIds: socialAction?.id ? [socialAction.id] : [],
+      artifactIds: [],
+      riskScore: 0
+    });
     return {
       lane: "chat",
       mode: "social",
@@ -1182,6 +1227,7 @@ export function classifyLaneDetailed(input = {}) {
         artifacts: [],
         risks: []
       },
+      boundaryPolicy,
       prompt,
       contextText,
       attachments,
@@ -1300,6 +1346,13 @@ export function classifyLaneDetailed(input = {}) {
     riskLevel === "approval_required" ||
     (actionIds.includes("task.deploy_release") && riskResult.score >= 3);
 
+  const boundaryPolicy = deriveBoundaryPolicy({
+    prompt,
+    actionIds,
+    artifactIds,
+    riskScore: riskResult.score
+  });
+
   const result = {
     lane,
     mode,
@@ -1332,6 +1385,7 @@ export function classifyLaneDetailed(input = {}) {
       artifacts: artifactResult.matched,
       risks: riskResult.matched
     },
+    boundaryPolicy,
     prompt,
     contextText,
     attachments,
