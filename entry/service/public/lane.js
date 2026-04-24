@@ -1035,7 +1035,9 @@ function deriveBoundaryPolicy({ prompt, actionIds = [], artifactIds = [], riskSc
   const text = normalizePrompt(prompt);
   const wantsDirectCopy = DIRECT_COPY_REQUEST_PATTERNS.some((pattern) => pattern.test(text));
   const wantsProtection = CODE_PROTECTION_REQUEST_PATTERNS.some((pattern) => pattern.test(text));
+  const explicitCodeReference = /代码|源码|脚本|仓库|repo|source\s*code|script/i.test(text);
   const codeCentric =
+    explicitCodeReference ||
     artifactIds.includes("artifact.code") ||
     actionIds.some((id) => ["task.implement", "task.generate", "task.modify", "task.refactor"].includes(id));
 
