@@ -1,0 +1,93 @@
+{
+  "version": "v1.foundation-final-closeout",
+  "route": "GET /entry/preflight",
+  "scope_note": "last_session_available and last_session are scoped to selected_workspace",
+  "response_schema": {
+    "host_connected": "boolean",
+    "full_access_granted": "boolean",
+    "openai_byo_bound": "boolean",
+    "workspace_available": "boolean",
+    "selected_workspace": {
+      "id": "string|null",
+      "name": "string|null",
+      "workspace_path": "string|null"
+    },
+    "last_session_available": "boolean",
+    "last_session": {
+      "id": "string|null",
+      "workspace_path": "string|null",
+      "run_id": "string|null",
+      "status": "string|null",
+      "updated_at": "ISO-8601|null"
+    },
+    "contracts": {
+      "preflight": "string",
+      "workspace": "string",
+      "session": "string",
+      "attachment": "string",
+      "access": "string",
+      "byo_openai": "string"
+    },
+    "environment": {
+      "captured_at": "ISO-8601",
+      "cwd": "string",
+      "repo_root": "string",
+      "workspace_root": "string",
+      "write_access": {
+        "repo_root": {
+          "ok": "boolean",
+          "reason": "string",
+          "checked_path": "string|null"
+        },
+        "workspace_root": {
+          "ok": "boolean",
+          "reason": "string",
+          "checked_path": "string|null"
+        }
+      },
+      "shell": {
+        "platform": "string",
+        "type": "powershell|cmd|bash|zsh|sh",
+        "wsl": "boolean",
+        "comspec": "string|null"
+      },
+      "toolchain": {
+        "git": "object",
+        "node": "object",
+        "npm": "object",
+        "pnpm": "object",
+        "python": "object",
+        "rg": "object"
+      },
+      "package_manager": {
+        "preferred": "pnpm|yarn|npm|bun|unknown",
+        "lockfiles": {
+          "pnpm": "boolean",
+          "yarn": "boolean",
+          "npm": "boolean",
+          "bun": "boolean"
+        }
+      },
+      "runtime": {
+        "sandbox": "string",
+        "approval_policy": "string",
+        "network": {
+          "reachable": "boolean",
+          "reason": "string"
+        }
+      },
+      "provider": {
+        "openai": {
+          "byo_bound": "boolean",
+          "binding_status": "string|null",
+          "validation_status": "string|null",
+          "usable": "boolean"
+        }
+      },
+      "linux_wsl_dependencies": "object",
+      "capability_auth": {
+        "full_access_granted": "boolean"
+      }
+    }
+  }
+}
