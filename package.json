@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "ledger:install": "node run-ledger/install.mjs --strict",
+    "ledger:status": "node run-ledger/status.mjs",
+    "entry:onekey": "node scripts/entry-onekey.mjs",
     "entry:install": "node entry/cli.mjs entry install",
     "entry:start": "node entry/cli.mjs entry start",
     "entry:stop": "node entry/cli.mjs entry stop",

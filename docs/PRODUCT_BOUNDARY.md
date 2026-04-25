@@ -47,6 +47,12 @@ Effective date: 2026-04-22
 - 4318 继续 Developer Lab 工装定位，不升格为正式用户产品页。
 - 不改变既有运行主链与路由兼容口径。
 
+## 6.1 Run-Ledger SQL Boundary
+- `run-ledger/init.sql` 在 CE 侧仅保留 bootstrap contract（非完整私有 schema 源）。
+- CE 通过 `community-ledger.bundle.sql + community-ledger.manifest.v1.json + install.mjs` 完成可执行初始化与校验。
+- PCP 保留完整 SQL 源、迁移治理和私有 overlay 产物；CE 仅消费受控产物，不直接暴露完整私有实现。
+- 不允许假初始化：`npm run ledger:status` 必须真实校验 `required_tables` 与迁移状态。
+
 ## 7. Violation Handling
 - 任何将 PCP 代码或密钥放入公开仓的变更，视为发布阻断。
 - 任何改变 43985 入口定位或破坏既有路由兼容的变更，视为发布阻断。

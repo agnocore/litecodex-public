@@ -8,9 +8,7 @@ Use a normal shell (PowerShell/CMD/Windows Terminal), not Node.js REPL (`>` prom
 ```powershell
 git clone https://github.com/agnocore/litecodex-public.git
 cd litecodex-public
-npm install
-npm run entry:install
-npm run entry:status
+npm run entry:onekey
 ```
 
 Health check:
@@ -19,6 +17,7 @@ Invoke-WebRequest -UseBasicParsing http://127.0.0.1:43985/health | Select-Object
 ```
 
 - Expected listen: `127.0.0.1:43985`
+- Host bridge expected: `127.0.0.1:4317`
 - Full steps: [INSTALL.md](./INSTALL.md)
 
 ## Local Entry
@@ -29,6 +28,8 @@ Invoke-WebRequest -UseBasicParsing http://127.0.0.1:43985/health | Select-Object
 ## Install and Start
 - See [INSTALL.md](./INSTALL.md)
 - Recommended commands:
+  - `npm run entry:onekey`
+  - `npm run ledger:status`
   - `npm run entry:install`
   - `npm run entry:status`
   - `npm run entry:open`

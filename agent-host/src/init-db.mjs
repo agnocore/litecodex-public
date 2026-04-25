@@ -1,18 +1,23 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, "..", "..");
-const ledgerDir = path.join(repoRoot, "run-ledger");
-const dbPath = path.join(ledgerDir, "ledger.sqlite");
-const schemaPath = path.join(ledgerDir, "init.sql");
+const installer = path.join(repoRoot, "run-ledger", "install.mjs");
 
-fs.mkdirSync(ledgerDir, { recursive: true });
-const schemaSql = fs.readFileSync(schemaPath, "utf8");
-const db = new DatabaseSync(dbPath);
-db.exec(schemaSql);
-db.close();
+if (!fs.existsSync(installer)) {
+  throw new Error(`ledger installer not found: ${installer}`);
+}
 
-console.log(`SQLite initialized: ${dbPath}`);
+const result = spawnSync(process.execPath, [installer, "--strict"], {
+  cwd: repoRoot,
+  encoding: "utf8"
+});
+
+if (result.status !== 0) {
+  throw new Error(`ledger install failed: ${result.stderr || result.stdout || "unknown error"}`);
+}
+
+process.stdout.write(result.stdout || "");

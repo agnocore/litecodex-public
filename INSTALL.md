@@ -22,42 +22,49 @@ cd litecodex-public
 ```
 预期：`pwd`/当前路径位于 `.../litecodex-public`，且能看到 `package.json`。
 
-## 3) 安装依赖
+## 3) 一键安装+启动+校验（推荐）
+```powershell
+npm run entry:onekey
+```
+该命令会自动执行：
+- `npm install`
+- ledger 初始化与 contract 校验（`run-ledger/install.mjs`）
+- entry 安装启动（`entry install`）
+- `127.0.0.1:43985` 和 `127.0.0.1:4317` 健康检查
+- 最小用户链路验证（workspace/session/turn/run）
+
+## 4) 分步模式（可选）
 ```powershell
 npm install
-```
-预期：出现 `added ... packages` 或 `up to date`，且命令退出码为 0。
-
-## 4) 安装并启动本地入口服务（唯一推荐命令）
-```powershell
+npm run ledger:install
 npm run entry:install
-```
-预期输出 JSON 中至少包含：
-- `"ok": true`
-- `"action": "install"`
-- `"service": "litecodex-entry"`
-- `"listen": "127.0.0.1:43985"`
-
-## 5) 检查状态
-```powershell
+npm run ledger:status
 npm run entry:status
 ```
-预期：
-- `"status": "online"`（或安装后短暂启动阶段再转 online）
-- `remote.body.service = "litecodex-entry"`
-- `remote.body.listen = "127.0.0.1:43985"`
+预期输出中至少包含：
+- `"ok": true`
+- `entry.listen = "127.0.0.1:43985"`
+- host 健康可达 `http://127.0.0.1:4317/health`
 
-## 6) 验证入口可访问
+## 5) 验证入口可访问
 ```powershell
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:43985/health | Select-Object -ExpandProperty Content
 ```
-预期返回：
-```json
-{"ok":true,"service":"litecodex-entry","listen":"127.0.0.1:43985"}
-```
+预期：
+- `{"ok":true,"service":"litecodex-entry","listen":"127.0.0.1:43985"}`（等价 JSON）
 
-然后浏览器打开：
+浏览器打开：
 - `http://127.0.0.1:43985`
+
+## 6) 私有能力与私有 ledger overlay（可选）
+- 社区功能默认无需 token/license。
+- 若要启用官方私有能力，请配置 entitlement 与私有 provider（参见 `docs/PRODUCT_BOUNDARY.md`）。
+- 若你持有私有 ledger overlay 产物，设置环境变量：
+```powershell
+$env:LITECODEX_LEDGER_PRIVATE_BUNDLE_SQL = "D:\\path\\to\\private-ledger.bundle.sql"
+npm run ledger:install
+```
+- 未配置 overlay 时不会静默走“假成功”；`ledger:status` 会明确展示当前 contract 状态。
 
 ## 7) 常用维护命令
 ```powershell
@@ -65,4 +72,5 @@ npm run entry:start
 npm run entry:stop
 npm run entry:restart
 npm run entry:open
+npm run ledger:status
 ```

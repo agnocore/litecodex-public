@@ -16,5 +16,6 @@ tmp_chrome_headless_phase1/
 run-ledger/*.db
 run-ledger/*.sqlite
 run-ledger/*.sqlite-*
+run-ledger/install-status.v1.json
 
 release/fresh-clone-public-*/

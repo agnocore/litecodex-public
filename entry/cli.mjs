@@ -22,6 +22,8 @@ const stateDir = path.join(entryDir, "state");
 const stateFile = path.join(stateDir, "entry-state.json");
 const pidFile = path.join(stateDir, "entry.pid");
 const runnerPath = path.join(serviceDir, "entry-runner.mjs");
+const ledgerInstallScript = path.join(rootDir, "run-ledger", "install.mjs");
+const ledgerStatusScript = path.join(rootDir, "run-ledger", "status.mjs");
 const startupRegisterScript = path.join(windowsDir, "register-startup.ps1");
 const startupUnregisterScript = path.join(windowsDir, "unregister-startup.ps1");
 const startupTaskName = SERVICE_NAME;
@@ -115,6 +117,14 @@ function runPowerShell(commandOrArgs, asFile = false) {
     ? ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ...commandOrArgs]
     : ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", commandOrArgs];
   return spawnSync("powershell", args, { encoding: "utf8" });
+}
+
+function runNodeScript(scriptPath, args = []) {
+  const cmd = [scriptPath, ...args];
+  return spawnSync(process.execPath, cmd, {
+    cwd: rootDir,
+    encoding: "utf8"
+  });
 }
 
 function getProcessCommandLine(pid) {
@@ -519,11 +529,33 @@ async function commandOpen() {
 
 async function commandInstall() {
   ensureEntryLayout();
+  if (!fs.existsSync(ledgerInstallScript)) {
+    throw new Error(`Missing ledger installer: ${ledgerInstallScript}`);
+  }
+
+  const ledgerInstall = runNodeScript(ledgerInstallScript, ["--strict"]);
+  if (ledgerInstall.status !== 0) {
+    throw new Error(`Ledger install failed: ${ledgerInstall.stderr || ledgerInstall.stdout || "unknown error"}`);
+  }
+
+  const ledgerStatus = fs.existsSync(ledgerStatusScript) ? runNodeScript(ledgerStatusScript) : null;
+  if (ledgerStatus && ledgerStatus.status !== 0) {
+    throw new Error(`Ledger status check failed: ${ledgerStatus.stderr || ledgerStatus.stdout || "unknown error"}`);
+  }
+
   registerStartupTask();
   addBinToUserPath();
   const startResult = await commandStart({ LITECODEX_ENTRY_STARTED_BY_INSTALL: "1" }, { silent: true });
   if (!startResult.ok) {
     throw new Error(`Install failed because entry start did not become healthy: ${startResult.code || "unknown"}`);
+  }
+  let ledger = null;
+  if (ledgerStatus?.stdout) {
+    try {
+      ledger = JSON.parse(ledgerStatus.stdout);
+    } catch {
+      ledger = { ok: false, error: "ledger_status_parse_failed" };
+    }
   }
   printJson({
     ok: true,
@@ -533,6 +565,7 @@ async function commandInstall() {
     startupTask: startupTaskName,
     cli: thisFile,
     health: startResult.health,
+    ledger,
     commandHint: "litecodex entry status"
   });
 }
