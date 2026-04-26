@@ -50,6 +50,35 @@ export async function loadPrivateProviders({
   helpers,
   logger = console
 }) {
+  function buildProviderGateResult({ authorized, gate, loaded, providersRequested }) {
+    const loadedProviders = Array.isArray(loaded) ? loaded.filter((row) => row && row.loaded === true) : [];
+    const loadedCapabilities = Array.from(
+      new Set(
+        loadedProviders
+          .flatMap((row) => (Array.isArray(row.capabilities) ? row.capabilities : []))
+          .map((row) => String(row || "").trim())
+          .filter(Boolean)
+      )
+    );
+    return {
+      authorized: authorized === true,
+      gate,
+      loaded,
+      loaded_capabilities: loadedCapabilities,
+      providers_requested: providersRequested,
+      hasLoadedProvider() {
+        return loadedProviders.length > 0;
+      },
+      hasCapability(capability) {
+        const key = String(capability || "").trim();
+        if (!key) {
+          return false;
+        }
+        return loadedCapabilities.includes(key);
+      }
+    };
+  }
+
   const gate = readEntitlementGate(repoRoot);
   const providerEntries = [];
 
@@ -64,12 +93,12 @@ export async function loadPrivateProviders({
   const loaded = [];
 
   if (!gate.authorized) {
-    return {
+    return buildProviderGateResult({
       authorized: false,
       gate,
       loaded,
-      providers_requested: uniqueEntries
-    };
+      providersRequested: uniqueEntries
+    });
   }
 
   for (const entryPath of uniqueEntries) {
@@ -110,10 +139,10 @@ export async function loadPrivateProviders({
     }
   }
 
-  return {
+  return buildProviderGateResult({
     authorized: true,
     gate,
     loaded,
-    providers_requested: uniqueEntries
-  };
+    providersRequested: uniqueEntries
+  });
 }

@@ -76,6 +76,7 @@ runtimeInfo.privateProviders = providerGate;
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`);
   const pathname = url.pathname;
+  let matchedRoute = null;
 
   if (req.method === "OPTIONS") {
     setCorsHeaders(res);
@@ -102,6 +103,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    matchedRoute = match.route;
     await match.route.handler({
       req,
       res,
@@ -116,6 +118,16 @@ const server = http.createServer(async (req, res) => {
       eventBus
     });
   } catch (error) {
+    if (matchedRoute?.source === "private") {
+      sendJson(res, 502, {
+        ok: false,
+        error: "provider_error",
+        code: "provider_error",
+        message: "Private provider execution failed.",
+        runtime_profile: "community_kernel"
+      });
+      return;
+    }
     sendJson(res, 500, {
       error: "internal_error",
       message: String(error?.message || error)

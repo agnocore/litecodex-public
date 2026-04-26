@@ -49,6 +49,27 @@ function sha256Text(input) {
   return crypto.createHash("sha256").update(String(input)).digest("hex");
 }
 
+function parseBoolean(value, fallback = false) {
+  if (value === true || value === false) {
+    return value;
+  }
+  if (value === 1 || value === "1") {
+    return true;
+  }
+  if (value === 0 || value === "0") {
+    return false;
+  }
+  return fallback;
+}
+
+function parseInteger(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, Math.floor(parsed)));
+}
+
 export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
   ensureDir(repoRoot);
   ensureDir(runsRoot);
@@ -61,6 +82,8 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
   const turnsBySession = new Map();
   const capabilityGrants = [];
   const globalEvents = [];
+  const contextSettingsBySession = new Map();
+  const contextSettingsFile = path.join(repoRoot, "entry", "state", "context-settings.v1.json");
   const accessState = {
     full_access_granted: false,
     updated_at: nowIso(),
@@ -87,6 +110,21 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
       }
       globalEvents.push(event);
     }
+  }
+
+  const contextFilePayload = readJson(contextSettingsFile, {});
+  const contextRows =
+    contextFilePayload && typeof contextFilePayload === "object" && contextFilePayload.sessions
+      ? contextFilePayload.sessions
+      : {};
+  for (const [sessionId, row] of Object.entries(contextRows)) {
+    if (typeof sessionId !== "string" || !sessionId.trim()) {
+      continue;
+    }
+    if (!row || typeof row !== "object") {
+      continue;
+    }
+    contextSettingsBySession.set(sessionId, { ...row, session_id: sessionId });
   }
 
   function runDir(runId) {
@@ -169,12 +207,33 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
     if (!run) {
       return null;
     }
+    const session = findSessionByRunId(run.id);
+    const settings = session ? getContextSettings(session.id) : null;
     const compactFile = path.join(runDir(run.id), "compact", "latest.json");
     const compact = useCompact ? readJson(compactFile, null) : null;
+    const hydratedMode = compact ? "compact_snapshot" : "raw";
+    const projection = {
+      run_id: run.id,
+      run_status: run.status,
+      final_projection_status: run.status,
+      hydrate_mode: hydratedMode,
+      compact_run_id: compact ? run.id : null,
+      compact_snapshot_id: compact?.hash || null,
+      compact_integrity_hash: compact?.hash || null
+    };
+    const contextProjection = {
+      hydration_mode: hydratedMode,
+      compact_run_id: projection.compact_run_id,
+      compact_snapshot_id: projection.compact_snapshot_id,
+      resume_cursor: null
+    };
     return {
       run_id: run.id,
       status: run.status,
       compact,
+      projection,
+      context_projection: contextProjection,
+      context_settings: settings,
       context: {
         title: run.title,
         source: run.source,
@@ -250,16 +309,22 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
     return [...workspaces.values()].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
   }
 
+  function getWorkspace(workspaceId) {
+    return workspaces.get(String(workspaceId || "")) || null;
+  }
+
   function createSession({ workspaceId = null, runId = null } = {}) {
     const run = runId ? getRun(runId) : createRun({ title: "Entry session run", source: "entry_session" });
     if (!run) {
       return null;
     }
+    const workspace = workspaceId ? workspaces.get(String(workspaceId)) || null : null;
     const id = randomId("sess");
     const row = {
       id,
       run_id: run.id,
-      workspace_id: workspaceId,
+      workspace_id: workspace ? workspace.id : workspaceId,
+      workspace_path: workspace?.workspace_path || null,
       status: "active",
       created_at: nowIso(),
       updated_at: nowIso()
@@ -419,6 +484,267 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
     return row;
   }
 
+  function latestSession() {
+    return listSessions()[0] || null;
+  }
+
+  function latestRunIdForSession(sessionId) {
+    const session = getSession(sessionId);
+    if (!session) {
+      return null;
+    }
+    return typeof session.run_id === "string" && session.run_id.trim() ? session.run_id.trim() : null;
+  }
+
+  function findSessionByRunId(runId) {
+    const id = String(runId || "").trim();
+    if (!id) {
+      return null;
+    }
+    const rows = listSessions();
+    return rows.find((row) => String(row.run_id || "") === id) || null;
+  }
+
+  function defaultContextSettings(sessionId = null) {
+    return {
+      session_id: typeof sessionId === "string" && sessionId.trim() ? sessionId.trim() : null,
+      auto_compact_after_task_lane: true,
+      auto_compact_enabled: true,
+      event_threshold: 120,
+      token_threshold: 12000,
+      stdout_stderr_threshold: 12000,
+      artifacts_threshold: 24,
+      repair_round_threshold: 2,
+      last_compact_status: "unknown",
+      last_snapshot_id: null,
+      last_compact_reason: null,
+      last_compacted_at: null
+    };
+  }
+
+  function normalizeContextSettings(sessionId, raw = {}) {
+    const defaults = defaultContextSettings(sessionId);
+    const next = raw && typeof raw === "object" ? raw : {};
+    return {
+      session_id: defaults.session_id,
+      auto_compact_after_task_lane: parseBoolean(
+        next.auto_compact_after_task_lane,
+        defaults.auto_compact_after_task_lane
+      ),
+      auto_compact_enabled: parseBoolean(next.auto_compact_enabled, defaults.auto_compact_enabled),
+      event_threshold: parseInteger(next.event_threshold, defaults.event_threshold, 4, 200000),
+      token_threshold: parseInteger(next.token_threshold, defaults.token_threshold, 100, 2000000),
+      stdout_stderr_threshold: parseInteger(
+        next.stdout_stderr_threshold,
+        defaults.stdout_stderr_threshold,
+        100,
+        2000000
+      ),
+      artifacts_threshold: parseInteger(next.artifacts_threshold, defaults.artifacts_threshold, 1, 200000),
+      repair_round_threshold: parseInteger(next.repair_round_threshold, defaults.repair_round_threshold, 1, 256),
+      last_compact_status: normalizeString(next.last_compact_status, defaults.last_compact_status),
+      last_snapshot_id: next.last_snapshot_id ? String(next.last_snapshot_id) : null,
+      last_compact_reason: next.last_compact_reason ? String(next.last_compact_reason) : null,
+      last_compacted_at: next.last_compacted_at ? String(next.last_compacted_at) : null
+    };
+  }
+
+  function persistContextSettings() {
+    const sessionsObject = {};
+    for (const [sessionId, settings] of contextSettingsBySession.entries()) {
+      sessionsObject[sessionId] = normalizeContextSettings(sessionId, settings);
+    }
+    writeJson(contextSettingsFile, {
+      version: "v1",
+      updated_at: nowIso(),
+      sessions: sessionsObject
+    });
+  }
+
+  function getContextSettings(sessionId) {
+    const id = typeof sessionId === "string" && sessionId.trim() ? sessionId.trim() : null;
+    if (!id) {
+      return null;
+    }
+    const row = contextSettingsBySession.get(id) || {};
+    const normalized = normalizeContextSettings(id, row);
+    contextSettingsBySession.set(id, normalized);
+    return normalized;
+  }
+
+  function patchContextSettings(sessionId, patch = {}, source = "community_context_settings_update") {
+    const id = typeof sessionId === "string" && sessionId.trim() ? sessionId.trim() : null;
+    if (!id) {
+      return null;
+    }
+    const existing = getContextSettings(id) || defaultContextSettings(id);
+    const normalizedPatch =
+      patch && typeof patch === "object"
+        ? Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined))
+        : {};
+    const merged = normalizeContextSettings(id, {
+      ...existing,
+      ...normalizedPatch
+    });
+    contextSettingsBySession.set(id, merged);
+    persistContextSettings();
+    const runId = latestRunIdForSession(id);
+    if (runId) {
+      emitEvent({
+        runId,
+        type: "context.settings.updated",
+        payload: {
+          session_id: id,
+          source: normalizeString(source, "community_context_settings_update"),
+          settings: merged
+        }
+      });
+    }
+    return merged;
+  }
+
+  function resumeRun(runId, { resumeReason = "manual_resume" } = {}) {
+    const run = getRun(runId);
+    if (!run) {
+      return { ok: false, error: "run_not_found", reason: "run_not_found", resume_session: null };
+    }
+    const status = normalizeString(run.status, "unknown");
+    if (status === "running") {
+      return { ok: false, error: "run_not_resumable", reason: "already_running", resume_session: null };
+    }
+    if (!["failed", "failed_controlled", "paused", "interrupted", "stale_running"].includes(status)) {
+      return { ok: false, error: "run_not_resumable", reason: `status_${status}_not_resumable`, resume_session: null };
+    }
+
+    const priorEvents = listRunEvents(run.id, 0);
+    const resumeCursor = priorEvents.length ? Number(priorEvents[priorEvents.length - 1].seq || 0) : null;
+    const resumeSession = {
+      id: randomId("resume"),
+      run_id: run.id,
+      status_before_resume: status,
+      resumable: true,
+      resume_reason: normalizeString(resumeReason, "manual_resume"),
+      resume_cursor: Number.isFinite(resumeCursor) ? resumeCursor : null,
+      status: "completed",
+      resumed_step_id: "step.community.resume",
+      created_at: nowIso(),
+      updated_at: nowIso()
+    };
+    emitEvent({
+      runId: run.id,
+      type: "resume.requested",
+      payload: {
+        run_id: run.id,
+        status_before_resume: status,
+        resume_reason: resumeSession.resume_reason,
+        resume_session_id: resumeSession.id
+      }
+    });
+    emitEvent({
+      runId: run.id,
+      type: "step.resumed",
+      payload: {
+        step_id: resumeSession.resumed_step_id,
+        resume_reason: resumeSession.resume_reason
+      }
+    });
+    emitEvent({
+      runId: run.id,
+      type: "resume.completed",
+      payload: {
+        run_id: run.id,
+        resume_session_id: resumeSession.id,
+        resumed_step_id: resumeSession.resumed_step_id
+      }
+    });
+    updateRun(run.id, {
+      status: "completed",
+      resumed_at: nowIso(),
+      completed_at: nowIso()
+    });
+    return {
+      ok: true,
+      run: getRun(run.id),
+      resume_session: resumeSession
+    };
+  }
+
+  function compactContext({
+    runId,
+    sessionId = null,
+    triggerType = "manual_api",
+    reason = "manual_api_compact",
+    requestedBy = "api_context_compact"
+  } = {}) {
+    const run = getRun(runId);
+    if (!run) {
+      return { ok: false, error: "run_not_found", reason: "run_not_found" };
+    }
+    const artifact = compactRun(run.id, { mode: "context_compact" });
+    if (!artifact) {
+      return { ok: false, error: "compact_failed", reason: "compact_failed" };
+    }
+
+    const resolvedSessionId =
+      typeof sessionId === "string" && sessionId.trim()
+        ? sessionId.trim()
+        : findSessionByRunId(run.id)?.id || null;
+
+    let settings = null;
+    if (resolvedSessionId) {
+      settings = patchContextSettings(
+        resolvedSessionId,
+        {
+          last_compact_status: "completed",
+          last_snapshot_id: artifact.hash,
+          last_compact_reason: normalizeString(reason, "manual_api_compact"),
+          last_compacted_at: nowIso()
+        },
+        "api_context_compact"
+      );
+    }
+
+    emitEvent({
+      runId: run.id,
+      type: "context.compact.completed",
+      payload: {
+        run_id: run.id,
+        session_id: resolvedSessionId,
+        trigger_type: normalizeString(triggerType, "manual_api"),
+        reason: normalizeString(reason, "manual_api_compact"),
+        requested_by: normalizeString(requestedBy, "api_context_compact"),
+        compact_hash: artifact.hash
+      }
+    });
+
+    return {
+      ok: true,
+      run_id: run.id,
+      session_id: resolvedSessionId,
+      context_compaction: {
+        id: randomId("ctxcmp"),
+        run_id: run.id,
+        session_id: resolvedSessionId,
+        status: "completed",
+        reason: normalizeString(reason, "manual_api_compact"),
+        trigger_type: normalizeString(triggerType, "manual_api"),
+        requested_by: normalizeString(requestedBy, "api_context_compact"),
+        completed_at: nowIso()
+      },
+      context_snapshot: {
+        id: `snapshot_${artifact.hash.slice(0, 16)}`,
+        compact_hash: artifact.hash,
+        created_at: nowIso()
+      },
+      compact_run: {
+        id: run.id,
+        hash: artifact.hash,
+        status: "completed"
+      },
+      settings
+    };
+  }
+
   function addAttachment({ sessionId, sourceType, fileName, mimeType, contentBase64 }) {
     const session = getSession(sessionId);
     if (!session) {
@@ -574,15 +900,23 @@ export function createHostState({ repoRoot, runsRoot, workspacesRoot }) {
     getEventsSince,
     createWorkspace,
     listWorkspaces,
+    getWorkspace,
     createSession,
     listSessions,
     getSession,
     touchSession,
+    latestSession,
+    latestRunIdForSession,
+    findSessionByRunId,
     createTurn,
     listTurns,
     listRunEvents,
     listRunDisplayEvents,
     getRunDetails,
+    getContextSettings,
+    patchContextSettings,
+    resumeRun,
+    compactContext,
     addAttachment,
     listAttachments,
     bindByoKey,

@@ -2,7 +2,7 @@
   "manifest_version": "v1.agent-host-community-runtime",
   "build_version": "2026-04-26.agent-host-community-runtime.v2",
   "source_revision": "private-control-plane.agent-host-runtime.community-kernel",
-  "generated_at": "2026-04-26T06:56:15.807Z",
+  "generated_at": "2026-04-26T14:48:05.560Z",
   "host_entrypoint": {
     "script": "src/server.mjs",
     "bind": "127.0.0.1:4317",
@@ -16,8 +16,8 @@
     },
     {
       "path": "src/server.mjs",
-      "sha256": "199b2ed6fd9661619cc1688ef35619fda5dba36949ca65dc9024e7cda17aa911",
-      "bytes": 3379
+      "sha256": "91a2ed579c4431f421be16bd1a1269b6351db37e1cd721c6df3f3e80a7e8da23",
+      "bytes": 3724
     },
     {
       "path": "src/kernel/route-registry.mjs",
@@ -26,8 +26,8 @@
     },
     {
       "path": "src/kernel/state-store.mjs",
-      "sha256": "c28f9873c710342e7802edb33b2755f7d2f75d9cad88df179340a723151857fe",
-      "bytes": 16694
+      "sha256": "c4f5d6f4142f0c41abf6d5211d3b5d400b545249a4813f6c22251921914eb57c",
+      "bytes": 27694
     },
     {
       "path": "src/kernel/contracts.mjs",
@@ -36,13 +36,13 @@
     },
     {
       "path": "src/kernel/community-routes.mjs",
-      "sha256": "b63e52fd5f466f459478007782cceecdce7c5ef671f32c718617a1987718661c",
-      "bytes": 20082
+      "sha256": "1eace483920b530e5aaf4f30b5afaabe989300cb16daaa3ed3938af2452fbf1c",
+      "bytes": 44811
     },
     {
       "path": "src/kernel/private-provider-loader.mjs",
-      "sha256": "b01c4098e141f7b19eebc0f031adb9721d163498d28059484ca441672c2d7eac",
-      "bytes": 3489
+      "sha256": "c71695e80b32bb905e321af27ebb3e266461c49703b8ed980608210b7b0709f1",
+      "bytes": 4456
     },
     {
       "path": "src/kernel/http-helpers.mjs",
