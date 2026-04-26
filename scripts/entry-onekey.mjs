@@ -48,6 +48,14 @@ function sha256Buffer(buf) {
   return crypto.createHash("sha256").update(buf).digest("hex");
 }
 
+function canonicalizeTextBuffer(buf, extHint) {
+  const ext = String(extHint || "").toLowerCase();
+  const textLike = ext === ".js" || ext === ".css" || ext === ".html" || ext === ".json" || ext === ".mjs";
+  if (!textLike) return buf;
+  const normalized = buf.toString("utf8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return Buffer.from(normalized, "utf8");
+}
+
 function readFrontendManifest() {
   if (!fs.existsSync(FRONTEND_MANIFEST)) {
     throw new Error(`frontend_manifest_missing:${FRONTEND_MANIFEST}`);
@@ -74,8 +82,8 @@ async function verifyServedFrontend(manifest) {
 
   const appServed = await fetchBytes(`${ENTRY_ORIGIN}/app.js`);
   const stylesServed = await fetchBytes(`${ENTRY_ORIGIN}/styles.css`);
-  const appHash = sha256Buffer(appServed);
-  const stylesHash = sha256Buffer(stylesServed);
+  const appHash = sha256Buffer(canonicalizeTextBuffer(appServed, ".js"));
+  const stylesHash = sha256Buffer(canonicalizeTextBuffer(stylesServed, ".css"));
   const appExpected = String(appRow.sha256 || "").toLowerCase();
   const stylesExpected = String(stylesRow.sha256 || "").toLowerCase();
   if (appHash !== appExpected) {

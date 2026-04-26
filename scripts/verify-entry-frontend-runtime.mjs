@@ -12,14 +12,18 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8").replace(/^\uFEFF/, ""));
 }
 
-function sha256(filePath) {
-  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
-}
-
 function verifyIndexReferences(indexText) {
   const hasScript = /<script\s+src=["']\/app\.js["'][^>]*type=["']module["']/i.test(indexText);
   const hasStyle = /<link\s+rel=["']stylesheet["']\s+href=["']\/styles\.css["']/i.test(indexText);
   return { hasScript, hasStyle };
+}
+
+function canonicalizeTextBytes(rawBuf, relPath) {
+  const ext = path.extname(relPath).toLowerCase();
+  const textLike = ext === ".js" || ext === ".css" || ext === ".html" || ext === ".json" || ext === ".mjs";
+  if (!textLike) return rawBuf;
+  const normalized = rawBuf.toString("utf8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return Buffer.from(normalized, "utf8");
 }
 
 function main() {
@@ -39,8 +43,9 @@ function main() {
       checks.push({ path: rel, ok: false, reason: "missing" });
       continue;
     }
-    const gotSha = sha256(abs);
-    const gotBytes = fs.statSync(abs).size;
+    const canonical = canonicalizeTextBytes(fs.readFileSync(abs), rel);
+    const gotSha = crypto.createHash("sha256").update(canonical).digest("hex");
+    const gotBytes = canonical.length;
     const wantSha = String(row.sha256 || "").toLowerCase();
     const wantBytes = Number(row.bytes || 0);
     checks.push({
