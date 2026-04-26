@@ -29,10 +29,16 @@ Invoke-WebRequest -UseBasicParsing http://127.0.0.1:43985/health | Select-Object
 - See [INSTALL.md](./INSTALL.md)
 - Recommended commands:
   - `npm run entry:onekey`
+  - `npm run frontend:verify`
   - `npm run ledger:status`
   - `npm run entry:install`
   - `npm run entry:status`
   - `npm run entry:open`
+
+Frontend runtime artifact contract:
+- `entry/service/public/app.js`
+- `entry/service/public/styles.css`
+- `entry/service/public/frontend-runtime.manifest.v1.json`
 
 ## Edition Boundary
 - CE public scope and private control plane boundary:

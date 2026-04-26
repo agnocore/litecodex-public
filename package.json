@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "frontend:verify": "node scripts/verify-entry-frontend-runtime.mjs",
     "ledger:install": "node run-ledger/install.mjs --strict",
     "ledger:status": "node run-ledger/status.mjs",
     "entry:onekey": "node scripts/entry-onekey.mjs",

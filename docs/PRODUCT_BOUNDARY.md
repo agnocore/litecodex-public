@@ -53,6 +53,12 @@ Effective date: 2026-04-22
 - PCP 保留完整 SQL 源、迁移治理和私有 overlay 产物；CE 仅消费受控产物，不直接暴露完整私有实现。
 - 不允许假初始化：`npm run ledger:status` 必须真实校验 `required_tables` 与迁移状态。
 
+## 6.2 Entry Frontend Runtime Boundary
+- CE 公开仓只发布浏览器可执行 runtime artifacts（`app.js`、`styles.css`、`index.html`）及其 checksum manifest。
+- 私有仓保留 canonical frontend artifacts 与发布脚本；通过受控发布将 runtime artifacts 同步到 CE。
+- 浏览器 runtime artifacts 禁止包含 secrets、tokens、私有 provider 源码、授权绕过逻辑。
+- `npm run frontend:verify` 必须校验 runtime artifacts 与 manifest 一致。
+
 ## 7. Violation Handling
 - 任何将 PCP 代码或密钥放入公开仓的变更，视为发布阻断。
 - 任何改变 43985 入口定位或破坏既有路由兼容的变更，视为发布阻断。

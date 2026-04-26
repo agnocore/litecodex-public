@@ -51,6 +51,7 @@ const EXECUTION_INTENT_SET = new Set([
 const KEY_THREADS = "entry_threads_v3";
 const KEY_DELETED = "entry_deleted_sessions_v3";
 const KEY_CLASSIFICATIONS = "entry_classifications_v1";
+const DRAFT_SESSION_PREFIX = "draft_";
 
 const LEGACY_CARD_TYPE_TO_DISPLAY = Object.freeze({
   "User Message": DISPLAY_EVENT_TYPES.USER_MESSAGE,
@@ -77,9 +78,23 @@ const state = {
   classifications: loadClassifications(),
   currentClassification: null,
   runEventCursor: {},
+  runtimeRuns: {},
+  runtimeStream: {
+    runId: null,
+    sessionId: null,
+    source: null,
+    retryTimer: null,
+    startedAtMs: null,
+    firstRuntimeEventMs: null,
+    firstRuntimeEventAt: null
+  },
+  runtimeStreamRenderQueued: false,
+  sessionRunIds: {},
+  runtimeCardCollapse: {},
   sidebarSearch: "",
   pageSearch: "",
   composer: "",
+  composerCaret: null,
   composerComposing: false,
   composerTokens: [],
   composerSuggest: {
@@ -115,14 +130,18 @@ const state = {
     sourceSummary: "managed under litecodex workspaces root",
     confirmed: true
   },
-  autoCompact: true
-  ,
+  autoCompact: true,
+  contextSettingsLoading: false,
+  contextSettings: null,
   threadAnchor: "bottom",
   threadScrollPinnedByUser: false,
-  threadRenderKey: null
+  threadRenderKey: null,
+  lastRenderedRoute: null
 };
 
 const logs = [];
+
+const TOPBAR_TONE_CLASSES = ["ok", "warn", "bad"];
 
 function normalizeStoredCard(card) {
   if (!card || typeof card !== "object") return null;
@@ -224,6 +243,80 @@ function t(v) {
   }
 }
 
+function safeFocusWithoutScroll(target) {
+  if (!target || typeof target.focus !== "function") return;
+  try {
+    target.focus({ preventScroll: true });
+  } catch {
+    target.focus();
+  }
+}
+
+function readWindowScrollTop() {
+  return Number(window.scrollY || window.pageYOffset || document.documentElement?.scrollTop || document.body?.scrollTop || 0);
+}
+
+function writeWindowScrollTop(top) {
+  const next = Math.max(0, Number.isFinite(Number(top)) ? Number(top) : 0);
+  try {
+    window.scrollTo(0, next);
+  } catch {
+    // no-op
+  }
+  if (document.documentElement) {
+    document.documentElement.scrollTop = next;
+  }
+  if (document.body) {
+    document.body.scrollTop = next;
+  }
+}
+
+function captureElementScroll(el) {
+  if (!(el instanceof HTMLElement)) return null;
+  return {
+    top: Number(el.scrollTop || 0),
+    left: Number(el.scrollLeft || 0)
+  };
+}
+
+function restoreElementScroll(el, snapshot) {
+  if (!(el instanceof HTMLElement) || !snapshot) return;
+  const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+  const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+  const nextTop = Math.max(0, Math.min(maxTop, Number(snapshot.top || 0)));
+  const nextLeft = Math.max(0, Math.min(maxLeft, Number(snapshot.left || 0)));
+  el.scrollTop = nextTop;
+  el.scrollLeft = nextLeft;
+}
+
+function captureScrollState() {
+  return {
+    windowTop: readWindowScrollTop(),
+    pageWrap: captureElementScroll(document.querySelector("#app > .page-wrap")),
+    homeSidebar: captureElementScroll(appEl.querySelector("#layoutWorkbench .sidebar")),
+    homeSessionList: captureElementScroll(appEl.querySelector("#layoutWorkbench .session-list")),
+    homeThread: captureElementScroll(appEl.querySelector("#homeThread")),
+    homeReview: captureElementScroll(appEl.querySelector(".review-content"))
+  };
+}
+
+function restoreScrollState(snapshot) {
+  if (!snapshot) return;
+  const restoreNow = () => {
+    writeWindowScrollTop(snapshot.windowTop);
+    restoreElementScroll(document.querySelector("#app > .page-wrap"), snapshot.pageWrap);
+    restoreElementScroll(appEl.querySelector("#layoutWorkbench .sidebar"), snapshot.homeSidebar);
+    restoreElementScroll(appEl.querySelector("#layoutWorkbench .session-list"), snapshot.homeSessionList);
+    restoreElementScroll(appEl.querySelector(".review-content"), snapshot.homeReview);
+    const shouldRestoreThread = state.route === "/" && (state.threadAnchor !== "bottom" || state.threadScrollPinnedByUser);
+    if (shouldRestoreThread) {
+      restoreElementScroll(appEl.querySelector("#homeThread"), snapshot.homeThread);
+    }
+  };
+  restoreNow();
+  requestAnimationFrame(restoreNow);
+}
+
 function toast(msg, level = "warn") {
   state.toast = { msg, level };
   if (!state.loading) {
@@ -240,6 +333,82 @@ function toast(msg, level = "warn") {
 function log(title, payload) {
   logs.unshift({ at: now(), title, payload });
   if (logs.length > 80) logs.pop();
+}
+
+function parseBool(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (value === 1 || value === "1") return true;
+  if (value === 0 || value === "0") return false;
+  return fallback;
+}
+
+function parseBoundedInt(value, fallback, min = 1, max = 2000000) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(parsed)));
+}
+
+function defaultContextSettings() {
+  return {
+    auto_compact_after_task_lane: true,
+    auto_compact_enabled: true,
+    event_threshold: 120,
+    token_threshold: 12000,
+    stdout_stderr_threshold: 12000,
+    artifacts_threshold: 24,
+    repair_round_threshold: 2,
+    last_compact_status: "unknown",
+    last_snapshot_id: null,
+    last_compact_reason: null,
+    last_compacted_at: null
+  };
+}
+
+function normalizeContextSettings(rawSettings = {}, sessionId = null) {
+  const defaults = defaultContextSettings();
+  const merged = {
+    ...defaults,
+    ...(rawSettings && typeof rawSettings === "object" ? rawSettings : {})
+  };
+  return {
+    session_id:
+      typeof sessionId === "string" && sessionId.trim()
+        ? sessionId.trim()
+        : typeof merged.session_id === "string" && merged.session_id.trim()
+          ? merged.session_id.trim()
+          : null,
+    auto_compact_after_task_lane: parseBool(merged.auto_compact_after_task_lane, defaults.auto_compact_after_task_lane),
+    auto_compact_enabled: parseBool(merged.auto_compact_enabled, defaults.auto_compact_enabled),
+    event_threshold: parseBoundedInt(merged.event_threshold, defaults.event_threshold, 4, 200000),
+    token_threshold: parseBoundedInt(merged.token_threshold, defaults.token_threshold, 100, 2000000),
+    stdout_stderr_threshold: parseBoundedInt(merged.stdout_stderr_threshold, defaults.stdout_stderr_threshold, 100, 2000000),
+    artifacts_threshold: parseBoundedInt(merged.artifacts_threshold, defaults.artifacts_threshold, 1, 200000),
+    repair_round_threshold: parseBoundedInt(merged.repair_round_threshold, defaults.repair_round_threshold, 1, 256),
+    last_compact_status: String(merged.last_compact_status || "unknown"),
+    last_snapshot_id: merged.last_snapshot_id ? String(merged.last_snapshot_id) : null,
+    last_compact_reason: merged.last_compact_reason ? String(merged.last_compact_reason) : null,
+    last_compacted_at: merged.last_compacted_at ? String(merged.last_compacted_at) : null
+  };
+}
+
+function hasPersistedCurrentSession() {
+  const cs = currentSession();
+  if (!cs?.id) return false;
+  return !String(cs.id).startsWith(DRAFT_SESSION_PREFIX);
+}
+
+function currentSessionIdForContextSettings() {
+  const cs = currentSession();
+  if (!(cs && typeof cs.id === "string")) return null;
+  if (String(cs.id).startsWith(DRAFT_SESSION_PREFIX)) return null;
+  return cs.id;
+}
+
+function applyContextSettingsState(settings, sessionId = null) {
+  const normalized = normalizeContextSettings(settings, sessionId);
+  state.contextSettings = normalized;
+  state.autoCompact = normalized.auto_compact_after_task_lane && normalized.auto_compact_enabled;
+  return normalized;
 }
 
 function byoUiLabel(ui) {
@@ -571,12 +740,13 @@ async function fetchComposerSuggestions(trigger) {
 
 async function refreshComposerSuggest(text, caret) {
   const trigger = detectComposerTriggerAtCaret(text, caret);
+  const liveCaret = currentComposerCaret(caret);
   if (!trigger) {
     if (!state.composerSuggest?.open) {
       return;
     }
     closeComposerSuggest();
-    render({ keepComposerFocus: true, caret });
+    render({ keepComposerFocus: true, caret: liveCaret });
     return;
   }
   const reqSeq = ++composerSuggestRequestSeq;
@@ -590,7 +760,7 @@ async function refreshComposerSuggest(text, caret) {
     triggerEnd: trigger.triggerEnd,
     loading: true
   };
-  render({ keepComposerFocus: true, caret });
+  render({ keepComposerFocus: true, caret: liveCaret });
   try {
     const items = await fetchComposerSuggestions(trigger);
     if (reqSeq !== composerSuggestRequestSeq) return;
@@ -604,11 +774,11 @@ async function refreshComposerSuggest(text, caret) {
       triggerEnd: trigger.triggerEnd,
       loading: false
     };
-    render({ keepComposerFocus: true, caret });
+    render({ keepComposerFocus: true, caret: currentComposerCaret(liveCaret) });
   } catch {
     if (reqSeq !== composerSuggestRequestSeq) return;
     closeComposerSuggest();
-    render({ keepComposerFocus: true, caret });
+    render({ keepComposerFocus: true, caret: currentComposerCaret(liveCaret) });
   }
 }
 
@@ -652,7 +822,7 @@ function moveComposerSuggestSelection(delta) {
   const current = Number(state.composerSuggest.selected || 0);
   const next = (current + delta + size) % size;
   state.composerSuggest.selected = next;
-  render({ keepComposerFocus: true, caret: Number(state.composerSuggest.triggerEnd || state.composer.length) });
+  render({ keepComposerFocus: true, caret: currentComposerCaret(state.composerSuggest.triggerEnd || state.composer.length) });
   return true;
 }
 
@@ -864,11 +1034,60 @@ async function refreshCore() {
     markThreadAnchorBottom(true);
   }
   syncCurrentClassificationFromSession();
+  await refreshContextSettingsForCurrentSession();
 
   const cs = currentSession();
   if (cs?.run_id) {
     await refreshRun(cs.run_id);
   }
+}
+
+async function refreshContextSettings(sessionId = null) {
+  const sid = typeof sessionId === "string" && sessionId.trim() ? sessionId.trim() : null;
+  if (!sid) {
+    applyContextSettingsState(defaultContextSettings(), null);
+    return state.contextSettings;
+  }
+  state.contextSettingsLoading = true;
+  try {
+    const payload = await api(`/api/context/settings?session_id=${encodeURIComponent(sid)}`);
+    const normalized = applyContextSettingsState(payload?.settings || {}, sid);
+    return normalized;
+  } catch (error) {
+    log("context_settings_refresh_failed", {
+      session_id: sid,
+      message: String(error?.payload?.error || error?.payload?.message || error?.message || error)
+    });
+    return state.contextSettings || applyContextSettingsState(defaultContextSettings(), sid);
+  } finally {
+    state.contextSettingsLoading = false;
+  }
+}
+
+async function refreshContextSettingsForCurrentSession() {
+  const sid = currentSessionIdForContextSettings();
+  return refreshContextSettings(sid);
+}
+
+async function patchContextSettingsForCurrentSession(patch = {}, source = "settings_ui") {
+  const sid = currentSessionIdForContextSettings();
+  if (!sid) {
+    throw new Error("persisted_session_required_for_context_settings");
+  }
+  const payload = await api("/api/context/settings", {
+    method: "POST",
+    body: {
+      session_id: sid,
+      ...patch
+    }
+  });
+  const normalized = applyContextSettingsState(payload?.settings || {}, sid);
+  log("context_settings_updated", {
+    source,
+    session_id: sid,
+    settings: normalized
+  });
+  return normalized;
 }
 
 async function refreshPreflight() {
@@ -897,6 +1116,12 @@ async function refreshRun(runId) {
       hyd?.compact?.id ||
       hyd?.compact_id ||
       null;
+    const compactSnapshotId =
+      projection?.compact_snapshot_id ||
+      contextProjection?.compact_snapshot_id ||
+      hyd?.compact_snapshot_id ||
+      hyd?.compact?.compact_snapshot_id ||
+      null;
     const hydrateMode = String(contextProjection?.hydration_mode || projection?.hydrate_mode || "");
     const resumedCursor = contextProjection?.resume_cursor;
 
@@ -906,11 +1131,13 @@ async function refreshRun(runId) {
     );
 
     state.context.assembled = Boolean(contextProjection || projection || hyd?.context || hyd?.hydration);
-    state.context.compacted = Boolean(compactRunId || hydrateMode.includes("compact"));
+    state.context.compacted = Boolean(compactRunId || compactSnapshotId || hydrateMode.includes("compact") || hydrateMode.includes("snapshot"));
     state.context.resumed = Boolean(
       compactRunId ||
+        compactSnapshotId ||
         (resumedCursor !== null && resumedCursor !== undefined) ||
-        hydrateMode.includes("compact")
+        hydrateMode.includes("compact") ||
+        hydrateMode.includes("snapshot")
     );
     state.context.mode = hydrateMode || "raw";
     state.context.hash = projection?.compact_integrity_hash || hyd?.compact?.hash || null;
@@ -932,22 +1159,82 @@ function route(path) {
   render();
 }
 
-function topbar() {
+function topbarStatusModel() {
   const ws = currentWorkspace();
-  const sess = state.currentSessionId ? (state.draftSession && state.currentSessionId === state.draftSession.id ? "draft" : "active") : "none";
-  const byo = byoUiLabel(state.byo.ui);
+  const sessionState = state.currentSessionId
+    ? state.draftSession && state.currentSessionId === state.draftSession.id
+      ? "draft"
+      : "active"
+    : "none";
+  const byoLabel = byoUiLabel(state.byo.ui);
   const byoClass = state.byo.ui === "valid" ? "ok" : state.byo.ui === "invalid" ? "bad" : "warn";
-  return `<header class="topbar"><div class="top-status"><span class="brand">lite-codex</span><span class="chip ${state.preflight?.host_connected ? "ok" : "bad"}">host:${state.preflight?.host_connected ? "connected" : "offline"}</span><span class="chip ${ws ? "ok" : "warn"}">workspace:${esc(prettyWorkspaceLabel(ws))}</span><span class="chip ${state.access.granted ? "ok" : "warn"}">access:${state.access.granted ? "granted" : "required"}</span><span class="chip ${byoClass}">OpenAI BYO:${esc(byo)}</span><span class="chip ${sess === "none" ? "warn" : "ok"}">session:${esc(sess)}</span><span class="chip ${state.run.status === "failed" ? "bad" : "ok"}">lane:${esc(state.run.lane)}</span></div><div class="top-actions"><button class="link-btn ${state.route === "/" ? "active" : ""}" data-route="/">Home</button><button class="link-btn ${state.route === "/sessions" ? "active" : ""}" data-route="/sessions">Sessions</button><button class="link-btn ${state.route === "/settings" ? "active" : ""}" data-route="/settings">Settings</button></div></header>`;
+  return {
+    host: {
+      text: `host:${state.preflight?.host_connected ? "connected" : "offline"}`,
+      tone: state.preflight?.host_connected ? "ok" : "bad"
+    },
+    workspace: {
+      text: `workspace:${prettyWorkspaceLabel(ws)}`,
+      tone: ws ? "ok" : "warn"
+    },
+    access: {
+      text: `access:${state.access.granted ? "granted" : "required"}`,
+      tone: state.access.granted ? "ok" : "warn"
+    },
+    byo: {
+      text: `OpenAI BYO:${byoLabel}`,
+      tone: byoClass
+    },
+    session: {
+      text: `session:${sessionState}`,
+      tone: sessionState === "none" ? "warn" : "ok"
+    },
+    lane: {
+      text: `lane:${state.run.lane || "idle"}`,
+      tone: state.run.status === "failed" ? "bad" : "ok"
+    }
+  };
+}
+
+function updateTopbarChip(chipKey, chipState) {
+  const chip = appEl.querySelector(`[data-topbar-chip='${chipKey}']`);
+  if (!(chip instanceof HTMLElement) || !chipState) return;
+  chip.textContent = chipState.text;
+  chip.classList.remove(...TOPBAR_TONE_CLASSES);
+  const tone = TOPBAR_TONE_CLASSES.includes(chipState.tone) ? chipState.tone : "warn";
+  chip.classList.add(tone);
+}
+
+function refreshStatusBadgesOnly() {
+  if (state.loading) return false;
+  const topbarEl = appEl.querySelector(".topbar");
+  if (!(topbarEl instanceof HTMLElement)) return false;
+  const model = topbarStatusModel();
+  updateTopbarChip("host", model.host);
+  updateTopbarChip("workspace", model.workspace);
+  updateTopbarChip("access", model.access);
+  updateTopbarChip("byo", model.byo);
+  updateTopbarChip("session", model.session);
+  updateTopbarChip("lane", model.lane);
+  return true;
+}
+
+function topbar() {
+  const model = topbarStatusModel();
+  return `<header class="topbar"><div class="top-status"><span class="brand">lite-codex</span><span class="chip ${model.host.tone}" data-topbar-chip="host">${esc(model.host.text)}</span><span class="chip ${model.workspace.tone}" data-topbar-chip="workspace">${esc(model.workspace.text)}</span><span class="chip ${model.access.tone}" data-topbar-chip="access">${esc(model.access.text)}</span><span class="chip ${model.byo.tone}" data-topbar-chip="byo">${esc(model.byo.text)}</span><span class="chip ${model.session.tone}" data-topbar-chip="session">${esc(model.session.text)}</span><span class="chip ${model.lane.tone}" data-topbar-chip="lane">${esc(model.lane.text)}</span></div><div class="top-actions"><button class="link-btn ${state.route === "/" ? "active" : ""}" data-route="/">Home</button><button class="link-btn ${state.route === "/sessions" ? "active" : ""}" data-route="/sessions">Sessions</button><button class="link-btn ${state.route === "/settings" ? "active" : ""}" data-route="/settings">Settings</button></div></header>`;
 }
 
 function settingsHtml() {
-  return `<section class="page-wrap" data-proof="settings-dedup"><article class="page-card"><h2>Workspace Management</h2><div class="field"><input class="input" data-bind="workspace-label" value="${esc(state.workspaceForm.label)}" placeholder="workspace label"/></div><div class="row"><button class="primary-btn" data-action="create-workspace">Create and Select</button><button class="ghost-btn" data-action="open-modal-workspace">Open Dialog</button></div><hr/>${state.workspaces.map((w) => `<div class="row" style="justify-content:space-between; margin-bottom:6px;"><div><b>${esc(prettyWorkspaceLabel(w))}</b><div class="note">${esc(workspaceSourceSummary(w))}</div></div><button class="ghost-btn" data-action="select-workspace" data-id="${esc(w.id)}">Select</button></div>`).join("")}</article><article class="page-card"><h2>OpenAI BYO Management</h2><div class="field"><input class="input" type="password" data-bind="byo-key" value="${esc(state.byo.key)}" placeholder="sk-..."/></div><div class="row"><button class="primary-btn" data-action="bind-byo">Bind + Validate</button><button class="ghost-btn" data-action="clear-byo">Clear</button></div><div class="note">State: ${esc(byoUiLabel(state.byo.ui))}</div></article><article class="page-card"><h2>Full Access Management</h2><div class="row"><button class="primary-btn" data-action="grant-access">Grant</button><button class="ghost-btn" data-action="recheck-access">Recheck</button></div><div class="note">Current: ${state.access.granted ? "Granted" : "Not granted"}</div></article><article class="page-card"><h2>Automation</h2><label><input data-bind="auto-compact" type="checkbox" ${state.autoCompact ? "checked" : ""}/> Auto compact after task lane</label></article></section>`;
+  const cfg = contextSettingsForUi();
+  const persistedSession = hasPersistedCurrentSession();
+  const autoCompactEnabled = cfg.auto_compact_after_task_lane && cfg.auto_compact_enabled;
+  return `<section class="page-wrap" data-proof="settings-dedup"><article class="page-card"><h2>Workspace Management</h2><div class="field"><input class="input" data-bind="workspace-label" value="${esc(state.workspaceForm.label)}" placeholder="workspace label"/></div><div class="row"><button class="primary-btn" data-action="create-workspace">Create and Select</button><button class="ghost-btn" data-action="open-modal-workspace">Open Dialog</button></div><hr/>${state.workspaces.map((w) => `<div class="row" style="justify-content:space-between; margin-bottom:6px;"><div><b>${esc(prettyWorkspaceLabel(w))}</b><div class="note">${esc(workspaceSourceSummary(w))}</div></div><button class="ghost-btn" data-action="select-workspace" data-id="${esc(w.id)}">Select</button></div>`).join("")}</article><article class="page-card"><h2>OpenAI BYO Management</h2><div class="field"><input class="input" type="password" data-bind="byo-key" value="${esc(state.byo.key)}" placeholder="sk-..."/></div><div class="row"><button class="primary-btn" data-action="bind-byo">Bind + Validate</button><button class="ghost-btn" data-action="clear-byo">Clear</button></div><div class="note">State: ${esc(byoUiLabel(state.byo.ui))}</div></article><article class="page-card"><h2>Full Access Management</h2><div class="row"><button class="primary-btn" data-action="grant-access">Grant</button><button class="ghost-btn" data-action="recheck-access">Recheck</button></div><div class="note">Current: ${state.access.granted ? "Granted" : "Not granted"}</div></article><article class="page-card"><h2>Automation</h2><label><input data-bind="auto-compact" type="checkbox" ${autoCompactEnabled ? "checked" : ""} ${persistedSession ? "" : "disabled"}/> Auto compact after task lane</label><div class="note">auto compact: ${autoCompactEnabled ? "enabled" : "disabled"}${state.contextSettingsLoading ? " (loading)" : ""}</div><div class="note">event threshold: ${esc(cfg.event_threshold)}</div><div class="note">token threshold: ${esc(cfg.token_threshold)}</div><div class="note">stdout/stderr threshold: ${esc(cfg.stdout_stderr_threshold)}</div><div class="note">artifacts threshold: ${esc(cfg.artifacts_threshold)}</div><div class="note">repair rounds threshold: ${esc(cfg.repair_round_threshold)}</div><div class="note">last compact status: ${esc(cfg.last_compact_status || "unknown")}</div><div class="note">last snapshot id: ${esc(cfg.last_snapshot_id || "-")}</div><div class="note">last compact reason: ${esc(cfg.last_compact_reason || "-")}</div><div class="note">last compacted at: ${esc(cfg.last_compacted_at ? t(cfg.last_compacted_at) : "-")}</div><div class="field"><label class="note">Event threshold</label><input class="input" data-bind="ctx-threshold-events" type="number" min="4" value="${esc(cfg.event_threshold)}" ${persistedSession ? "" : "disabled"}/></div><div class="field"><label class="note">Token threshold</label><input class="input" data-bind="ctx-threshold-tokens" type="number" min="100" value="${esc(cfg.token_threshold)}" ${persistedSession ? "" : "disabled"}/></div><div class="field"><label class="note">Stdout/Stderr threshold</label><input class="input" data-bind="ctx-threshold-stdout" type="number" min="100" value="${esc(cfg.stdout_stderr_threshold)}" ${persistedSession ? "" : "disabled"}/></div><div class="field"><label class="note">Artifacts threshold</label><input class="input" data-bind="ctx-threshold-artifacts" type="number" min="1" value="${esc(cfg.artifacts_threshold)}" ${persistedSession ? "" : "disabled"}/></div><div class="field"><label class="note">Repair rounds threshold</label><input class="input" data-bind="ctx-threshold-repair" type="number" min="1" value="${esc(cfg.repair_round_threshold)}" ${persistedSession ? "" : "disabled"}/></div><div class="row"><button class="primary-btn" data-action="save-context-settings" ${persistedSession ? "" : "disabled"}>Save Automation Settings</button><button class="ghost-btn" data-action="manual-context-compact" ${persistedSession ? "" : "disabled"}>Compact Context Now</button></div><div class="note">${persistedSession ? `session: ${esc(currentSessionIdForContextSettings() || "-")}` : "Select a persisted session to enable backend automation controls."}</div></article></section>`;
 }
 
 function sessionsHtml() {
   const active = sessionsVisible(state.sessions, state.pageSearch);
   const deleted = state.sessions.filter((s) => state.deleted.includes(s.id));
-  return `<section class="page-wrap" data-proof="sessions-bridge"><article class="page-card" style="grid-column:1/-1;"><h2>Session Manager</h2><div class="row"><button class="primary-btn" data-action="new-session">New Session</button><button class="ghost-btn" data-action="continue-last">Continue Last Session</button></div><div class="field" style="margin-top:8px;"><input class="input" data-bind="page-search" value="${esc(state.pageSearch)}" placeholder="Search sessions"/></div></article><article class="page-card"><h2>Active Sessions</h2>${active.map((s) => `<div class="block" style="padding:10px;margin-bottom:8px;"><div><b>${esc((thread(s.id).find((x) => x.displayType === DISPLAY_EVENT_TYPES.USER_MESSAGE)?.body || s.title || "Session").slice(0, 36))}</b></div><div class="note">${esc(t(s.updated_at || s.created_at || now()))}</div><div class="note">${esc(state.classifications[s.id] ? `${state.classifications[s.id].lane}/${state.classifications[s.id].intent}` : "no classification yet")}</div><div class="row" style="margin-top:8px;"><button class="ghost-btn" data-action="open-home-session" data-id="${esc(s.id)}">Open in Home</button><button class="danger-btn" data-action="delete-session" data-id="${esc(s.id)}">Delete</button></div></div>`).join("") || `<div class="note">No active sessions.</div>`}</article><article class="page-card"><h2>Deleted Sessions</h2>${deleted.map((s) => `<div class="block" style="padding:10px;margin-bottom:8px;"><div><b>${esc(s.title || "Session")}</b></div><button class="ghost-btn" data-action="restore-session" data-id="${esc(s.id)}">Restore</button></div>`).join("") || `<div class="note">No deleted sessions.</div>`}</article></section>`;
+  return `<section class="page-wrap" data-proof="sessions-bridge"><article class="page-card" style="grid-column:1/-1;"><h2>Session Manager</h2><div class="row"><button class="primary-btn" data-action="new-session">New Session</button><button class="ghost-btn" data-action="continue-last">Continue Last Session</button></div><div class="field" style="margin-top:8px;"><input class="input" data-bind="page-search" value="${esc(state.pageSearch)}" placeholder="Search sessions"/></div></article><article class="page-card"><h2>Active Sessions</h2>${active.map((s) => `<div class="block" style="padding:10px;margin-bottom:8px;"><div><b>${esc(renderSessionListItemTitle(s))}</b></div><div class="note">${esc(t(s.updated_at || s.created_at || now()))}</div><div class="note">${esc(state.classifications[s.id] ? `${state.classifications[s.id].lane}/${state.classifications[s.id].intent}` : "no classification yet")}</div><div class="row" style="margin-top:8px;"><button class="ghost-btn" data-action="open-home-session" data-id="${esc(s.id)}">Open in Home</button><button class="danger-btn" data-action="delete-session" data-id="${esc(s.id)}">Delete</button></div></div>`).join("") || `<div class="note">No active sessions.</div>`}</article><article class="page-card"><h2>Deleted Sessions</h2>${deleted.map((s) => `<div class="block" style="padding:10px;margin-bottom:8px;"><div><b>${esc(s.title || "Session")}</b></div><button class="ghost-btn" data-action="restore-session" data-id="${esc(s.id)}">Restore</button></div>`).join("") || `<div class="note">No deleted sessions.</div>`}</article></section>`;
 }
 
 function reviewText() {
@@ -1036,10 +1323,27 @@ function previewOverlayHtml() {
   return `<div class="preview-overlay" data-action="close-image-preview-bg"><section class="preview-panel"><button class="preview-close" data-action="close-image-preview">Close</button><img src="${esc(state.imagePreview.preview)}" alt="preview"/><div class="preview-caption">${esc(state.imagePreview.name || "image")}</div></section></div>`;
 }
 
+function currentComposerCaret(defaultCaret = null) {
+  const composer = appEl.querySelector("textarea[data-bind='composer']");
+  if (composer instanceof HTMLTextAreaElement && document.activeElement === composer) {
+    const pos = Number.isFinite(composer.selectionStart) ? Number(composer.selectionStart) : String(composer.value || "").length;
+    state.composerCaret = pos;
+    return pos;
+  }
+  if (Number.isFinite(Number(defaultCaret))) {
+    return Number(defaultCaret);
+  }
+  if (Number.isFinite(Number(state.composerCaret))) {
+    return Number(state.composerCaret);
+  }
+  return String(state.composer || "").length;
+}
+
 function captureComposerSnapshot() {
   const active = document.activeElement;
   if (!(active instanceof HTMLTextAreaElement)) return null;
   if (active.getAttribute("data-bind") !== "composer") return null;
+  state.composerCaret = Number.isFinite(active.selectionStart) ? Number(active.selectionStart) : state.composerCaret;
   return {
     focused: true,
     start: Number.isFinite(active.selectionStart) ? active.selectionStart : null,
@@ -1056,19 +1360,20 @@ function restoreComposerSnapshot(snapshot) {
   const endRaw = Number.isFinite(snapshot.end) ? Number(snapshot.end) : startRaw;
   const start = Math.max(0, Math.min(len, startRaw));
   const end = Math.max(start, Math.min(len, endRaw));
-  try {
-    composer.focus({ preventScroll: true });
-  } catch {
-    composer.focus();
-  }
+  safeFocusWithoutScroll(composer);
   try {
     composer.setSelectionRange(start, end);
+    state.composerCaret = end;
   } catch {
     // no-op
   }
 }
 
 function render(options = null) {
+  const previousRoute = state.lastRenderedRoute;
+  const routeChanged = typeof previousRoute === "string" && previousRoute !== state.route;
+  const preserveScroll = !(options && typeof options === "object" && options.preserveScroll === false);
+  const scrollState = preserveScroll ? captureScrollState() : null;
   const explicitSnapshot =
     options && typeof options === "object" && (options.keepComposerFocus || Number.isFinite(options.caret))
       ? {
@@ -1081,6 +1386,7 @@ function render(options = null) {
   if (state.loading) {
     appEl.innerHTML = `<div style="padding:24px;">Loading entry workbench...</div>`;
     modalRoot.innerHTML = "";
+    state.lastRenderedRoute = state.route;
     return;
   }
   const page = state.route === "/settings" ? settingsHtml() : state.route === "/sessions" ? sessionsHtml() : homeHtml();
@@ -1091,6 +1397,12 @@ function render(options = null) {
   bindInputs();
   syncThreadViewport();
   restoreComposerSnapshot(composerSnapshot);
+  if (scrollState && !routeChanged) {
+    requestAnimationFrame(() => {
+      restoreScrollState(scrollState);
+    });
+  }
+  state.lastRenderedRoute = state.route;
 }
 
 function bindInputs() {
@@ -1102,10 +1414,12 @@ function bindInputs() {
     composer.addEventListener("compositionend", (e) => {
       state.composerComposing = false;
       state.composer = e.target.value;
+      state.composerCaret = Number.isFinite(e.target.selectionStart) ? Number(e.target.selectionStart) : state.composer.length;
       void refreshComposerSuggest(state.composer, e.target.selectionStart);
     });
     composer.addEventListener("input", (e) => {
       state.composer = e.target.value;
+      state.composerCaret = Number.isFinite(e.target.selectionStart) ? Number(e.target.selectionStart) : state.composer.length;
       if (state.composerComposing || e.isComposing) return;
       void refreshComposerSuggest(state.composer, e.target.selectionStart);
     });
@@ -1144,6 +1458,7 @@ function bindInputs() {
       }
       if (e.key === "Backspace" && !state.composer.trim() && state.composerTokens.length > 0) {
         state.composerTokens = state.composerTokens.slice(0, -1);
+        state.composerCaret = 0;
         render({ keepComposerFocus: true, caret: 0 });
         return;
       }
@@ -1230,7 +1545,54 @@ function bindInputs() {
   if (byoInModal) byoInModal.addEventListener("input", (e) => { state.byo.key = e.target.value; });
 
   const autoCompact = appEl.querySelector("input[data-bind='auto-compact']");
-  if (autoCompact) autoCompact.addEventListener("change", (e) => { state.autoCompact = !!e.target.checked; });
+  if (autoCompact) {
+    autoCompact.addEventListener("change", async (e) => {
+      const nextChecked = !!e.target.checked;
+      if (!hasPersistedCurrentSession()) {
+        toast("Select a persisted session first", "warn");
+        render();
+        return;
+      }
+      state.autoCompact = nextChecked;
+      if (!state.contextSettings) {
+        applyContextSettingsState(defaultContextSettings(), currentSessionIdForContextSettings());
+      }
+      state.contextSettings.auto_compact_after_task_lane = nextChecked;
+      state.contextSettings.auto_compact_enabled = nextChecked;
+      render();
+      try {
+        await patchContextSettingsForCurrentSession(
+          {
+            auto_compact_after_task_lane: nextChecked,
+            auto_compact_enabled: nextChecked
+          },
+          "settings_toggle"
+        );
+        toast(`Auto compact ${nextChecked ? "enabled" : "disabled"}`, "ok");
+      } catch (error) {
+        toast(String(error?.payload?.message || error?.payload?.error || error?.message || error), "bad");
+        await refreshContextSettingsForCurrentSession();
+      }
+      render();
+    });
+  }
+  const thresholdBindings = [
+    ["ctx-threshold-events", "event_threshold", 4, 200000],
+    ["ctx-threshold-tokens", "token_threshold", 100, 2000000],
+    ["ctx-threshold-stdout", "stdout_stderr_threshold", 100, 2000000],
+    ["ctx-threshold-artifacts", "artifacts_threshold", 1, 200000],
+    ["ctx-threshold-repair", "repair_round_threshold", 1, 256]
+  ];
+  for (const [bindKey, field, min, max] of thresholdBindings) {
+    const input = appEl.querySelector(`input[data-bind='${bindKey}']`);
+    if (!input) continue;
+    input.addEventListener("input", (e) => {
+      if (!state.contextSettings) {
+        applyContextSettingsState(defaultContextSettings(), currentSessionIdForContextSettings());
+      }
+      state.contextSettings[field] = parseBoundedInt(e.target.value, state.contextSettings[field], min, max);
+    });
+  }
 }
 
 async function makeAttachment(file, source) {
@@ -1410,7 +1772,7 @@ function fallbackCopyText(text) {
   ta.style.opacity = "0";
   ta.style.pointerEvents = "none";
   document.body.appendChild(ta);
-  ta.focus();
+  safeFocusWithoutScroll(ta);
   ta.select();
   let ok = false;
   try {
@@ -1485,12 +1847,6 @@ async function copyWorkspacePath() {
   const ok = await copyText(p);
   if (ok) {
     log("workspace_action", { action: "copy_path", ok: true, workspace_path: p });
-    const s = currentSession();
-    if (s?.id) {
-      appendDisplayEvent(s.id, DISPLAY_EVENT_TYPES.TASK_PROGRESS, `Workspace path copied: ${p}`, {
-        source: "workspace_action"
-      });
-    }
     toast("Workspace path copied to clipboard", "ok");
     return;
   }
@@ -1616,10 +1972,1326 @@ function normalizeCardsForDisplay(cards) {
     .filter(Boolean);
 }
 
+function currentSessionRunIds(sessionId) {
+  const ids = [];
+  const fromTurns = Array.isArray(state.sessionRunIds?.[sessionId]) ? state.sessionRunIds[sessionId] : [];
+  for (const id of fromTurns) {
+    const runId = String(id || "").trim();
+    if (runId && !ids.includes(runId)) ids.push(runId);
+  }
+  const session = sessionId ? [...state.sessions, ...(state.draftSession ? [state.draftSession] : [])].find((x) => x.id === sessionId) : null;
+  const activeRunId = String(session?.run_id || "").trim();
+  if (activeRunId && !ids.includes(activeRunId)) ids.push(activeRunId);
+  return ids;
+}
+
+function ensureSessionRunLink(sessionId, runId) {
+  const sid = String(sessionId || "").trim();
+  const rid = String(runId || "").trim();
+  if (!sid || !rid) return;
+  if (!Array.isArray(state.sessionRunIds[sid])) {
+    state.sessionRunIds[sid] = [];
+  }
+  if (!state.sessionRunIds[sid].includes(rid)) {
+    state.sessionRunIds[sid].push(rid);
+  }
+}
+
+function ensureRuntimeRunContainer(runId) {
+  const rid = String(runId || "").trim();
+  if (!rid) return null;
+  if (!state.runtimeRuns[rid] || typeof state.runtimeRuns[rid] !== "object") {
+    state.runtimeRuns[rid] = {
+      run: { id: rid, status: "running" },
+      events: [],
+      display_events: [],
+      file_changes: []
+    };
+  }
+  if (!Array.isArray(state.runtimeRuns[rid].events)) {
+    state.runtimeRuns[rid].events = [];
+  }
+  return state.runtimeRuns[rid];
+}
+
+function normalizeRuntimeStreamEvent(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const seq = Number(raw.seq || 0);
+  if (!Number.isFinite(seq) || seq <= 0) return null;
+  const payload = raw.payload && typeof raw.payload === "object" ? raw.payload : {};
+  const type = String(raw.type || raw.kind || "").trim();
+  const timestamp = String(raw.timestamp || raw.ts || raw.created_at || now());
+  return {
+    ...raw,
+    seq,
+    type,
+    kind: String(raw.kind || type),
+    event_id: String(raw.event_id || raw.id || ""),
+    id: String(raw.id || raw.event_id || ""),
+    timestamp,
+    ts: timestamp,
+    created_at: String(raw.created_at || timestamp),
+    payload
+  };
+}
+
+function scheduleRuntimeStreamRender() {
+  if (state.runtimeStreamRenderQueued) return;
+  state.runtimeStreamRenderQueued = true;
+  requestAnimationFrame(() => {
+    state.runtimeStreamRenderQueued = false;
+    render();
+  });
+}
+
+function appendRuntimeStreamEvent(sessionId, runId, rawEvent) {
+  const event = normalizeRuntimeStreamEvent(rawEvent);
+  if (!event) return false;
+  const streamRunId = String(runId || "").trim();
+  const eventRunId = String(event.run_id || "").trim();
+  if (streamRunId && eventRunId && streamRunId !== eventRunId) {
+    log("runtime_stream_run_mismatch", {
+      stream_run_id: streamRunId,
+      event_run_id: eventRunId,
+      seq: Number(event.seq || 0),
+      type: String(event.type || event.kind || "")
+    });
+    return false;
+  }
+  const rid = String(eventRunId || streamRunId || "").trim();
+  if (!rid) return false;
+  const cursor = Number(state.runEventCursor[rid] || 0);
+  if (event.seq <= cursor) return false;
+  const runData = ensureRuntimeRunContainer(rid);
+  if (!runData) return false;
+  runData.events.push(event);
+  runData.events.sort((a, b) => Number(a?.seq || 0) - Number(b?.seq || 0));
+  state.runEventCursor[rid] = event.seq;
+  if (runData.run && typeof runData.run === "object") {
+    runData.run.status = String(runData.run.status || state.run.status || "running");
+  } else {
+    runData.run = { id: rid, status: String(state.run.status || "running") };
+  }
+  ensureSessionRunLink(sessionId, rid);
+  if (state.runtimeStream.startedAtMs && state.runtimeStream.firstRuntimeEventMs === null) {
+    state.runtimeStream.firstRuntimeEventMs = Math.max(0, Date.now() - Number(state.runtimeStream.startedAtMs || Date.now()));
+    state.runtimeStream.firstRuntimeEventAt = now();
+    log("runtime_stream_first_event", {
+      run_id: rid,
+      first_runtime_event_ms: state.runtimeStream.firstRuntimeEventMs,
+      first_event_seq: event.seq,
+      first_event_type: event.type
+    });
+  }
+  return true;
+}
+
+function closeRuntimeEventStream(runId = null) {
+  const active = state.runtimeStream;
+  if (!active || typeof active !== "object") return;
+  if (runId && String(active.runId || "") !== String(runId || "")) return;
+  if (active.retryTimer) {
+    clearTimeout(active.retryTimer);
+  }
+  if (active.source && typeof active.source.close === "function") {
+    try {
+      active.source.close();
+    } catch {
+      // no-op
+    }
+  }
+  state.runtimeStream = {
+    runId: null,
+    sessionId: null,
+    source: null,
+    retryTimer: null,
+    startedAtMs: null,
+    firstRuntimeEventMs: null,
+    firstRuntimeEventAt: null
+  };
+}
+
+function startRuntimeEventStream(sessionId, runId) {
+  if (typeof EventSource !== "function") return false;
+  const rid = String(runId || "").trim();
+  const sid = String(sessionId || "").trim();
+  if (!rid) return false;
+  if (state.runtimeStream?.runId === rid && state.runtimeStream?.source) {
+    return true;
+  }
+  closeRuntimeEventStream();
+  const sinceSeq = Number(state.runEventCursor[rid] || 0);
+  const source = new EventSource(`/events?run_id=${encodeURIComponent(rid)}&since_seq=${encodeURIComponent(String(sinceSeq))}`);
+  state.runtimeStream = {
+    runId: rid,
+    sessionId: sid || null,
+    source,
+    retryTimer: null,
+    startedAtMs: Date.now(),
+    firstRuntimeEventMs: null,
+    firstRuntimeEventAt: null
+  };
+  const consume = (data, transport = "message") => {
+    if (typeof data !== "string" || !data.trim()) return;
+    let parsed = null;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      return;
+    }
+    const appended = appendRuntimeStreamEvent(sid, rid, parsed);
+    if (appended) {
+      log("runtime_stream_event", {
+        run_id: rid,
+        seq: Number(parsed?.seq || 0),
+        type: String(parsed?.type || parsed?.kind || ""),
+        transport
+      });
+      scheduleRuntimeStreamRender();
+    }
+  };
+  source.addEventListener("replay", (evt) => consume(evt.data, "replay"));
+  source.onmessage = (evt) => consume(evt.data, "message");
+  source.addEventListener("connected", (evt) => {
+    consume(evt.data, "connected");
+  });
+  source.onerror = () => {
+    if (String(state.runtimeStream?.runId || "") !== rid) return;
+    const shouldRetry = isRunActiveStatus(state.run.status);
+    if (state.runtimeStream?.source && typeof state.runtimeStream.source.close === "function") {
+      try {
+        state.runtimeStream.source.close();
+      } catch {
+        // no-op
+      }
+    }
+    state.runtimeStream.source = null;
+    if (!shouldRetry) return;
+    const retryTimer = setTimeout(() => {
+      if (String(state.runtimeStream?.runId || "") !== rid || !isRunActiveStatus(state.run.status)) return;
+      startRuntimeEventStream(sid, rid);
+    }, 1000);
+    state.runtimeStream.retryTimer = retryTimer;
+  };
+  return true;
+}
+
+function runtimeSortValue(card) {
+  const seq = Number(card?.seq || 0);
+  const ts = Date.parse(String(card?.at || ""));
+  return {
+    seq: Number.isFinite(seq) ? seq : 0,
+    ts: Number.isFinite(ts) ? ts : 0
+  };
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function normalizeRuntimeFieldText(value, field = "") {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return "";
+  const lower = raw.toLowerCase();
+  if (lower === "-" || lower === "--" || lower === "unknown" || lower === "none" || lower === "null" || lower === "undefined") {
+    return "";
+  }
+  if (field === "command" && (lower === "command" || lower === "cmd")) {
+    return "";
+  }
+  if (field === "shell" && lower === "shell") {
+    return "";
+  }
+  if (field === "cwd" && lower === "cwd") {
+    return "";
+  }
+  return raw;
+}
+
+function firstMeaningfulRuntimeField(field, ...values) {
+  for (const value of values) {
+    const normalized = normalizeRuntimeFieldText(value, field);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return "";
+}
+
+function normalizeRuntimeArtifactId(value) {
+  const raw = firstNonEmptyString(value);
+  return raw || "none";
+}
+
+function runtimeCardCollapseKey(card) {
+  if (!(card && typeof card === "object")) return "";
+  const runId = firstNonEmptyString(card.run_id, card.runId);
+  const eventId = firstNonEmptyString(card.event_id, card.eventId, card.id);
+  const artifactId = normalizeRuntimeArtifactId(card.artifact_id || card.artifact_ref);
+  if (!runId || !eventId) {
+    return firstNonEmptyString(card.id);
+  }
+  return `${runId}::${eventId}::${artifactId}`;
+}
+
+function ensureRuntimeCommandCard(runId, event, payload, commandCards) {
+  const commandText = firstMeaningfulRuntimeField(
+    "command",
+    event?.command,
+    payload?.command,
+    payload?.command_summary,
+    payload?.failed_command,
+    payload?.adjusted_command
+  );
+  const stage = Number(payload?.stage_index || 0);
+  const attempt = Number(payload?.attempt || 0);
+  const taskId = String(payload?.task_id || payload?.taskId || "");
+  const stepId = String(event?.step_id || payload?.step_id || "");
+  const key = `${runId}|${stepId}|${taskId}|a${attempt}|s${stage}|${commandText}`;
+  if (!commandCards.has(key)) {
+    commandCards.set(key, {
+      id: `cmd_${key}`,
+      kind: "command",
+      run_id: runId,
+      event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${event?.seq || 0}`),
+      artifact_id: normalizeRuntimeArtifactId(event?.artifact_ref || payload?.artifact_ref || payload?.artifact_id),
+      title: commandText || "Command Event",
+      status: String(event?.status || payload?.status || "running"),
+      lane: String(event?.lane || "task"),
+      at: String(event?.timestamp || event?.ts || event?.created_at || now()),
+      seq: Number(event?.seq || 0),
+      command: commandText,
+      cwd: firstMeaningfulRuntimeField("cwd", event?.cwd, payload?.cwd, payload?.adjusted_cwd),
+      shell: firstMeaningfulRuntimeField("shell", event?.shell, payload?.shell, payload?.shell_type),
+      exit_code: Number.isFinite(Number(event?.exitCode))
+        ? Number(event.exitCode)
+        : Number.isFinite(Number(payload?.exit_code))
+          ? Number(payload.exit_code)
+          : null,
+      duration_ms: Number.isFinite(Number(event?.durationMs))
+        ? Number(event.durationMs)
+        : Number.isFinite(Number(payload?.duration_ms))
+          ? Number(payload.duration_ms)
+          : null,
+      stdout: firstNonEmptyString(event?.stdout, payload?.stdout, payload?.stdout_text, payload?.stdout_summary),
+      stderr: firstNonEmptyString(event?.stderr, payload?.stderr, payload?.stderr_text, payload?.stderr_summary, payload?.failure_summary),
+      artifact_ref: event?.artifact_ref || payload?.artifact_ref || null,
+      started_at: firstNonEmptyString(event?.startedAt, payload?.started_at, payload?.startedAt),
+      finished_at: firstNonEmptyString(event?.finishedAt, payload?.finished_at, payload?.finishedAt, payload?.completed_at, payload?.completedAt),
+      defaultCollapsed: true
+    });
+  }
+  return commandCards.get(key);
+}
+
+const COMMAND_EVENT_KINDS = new Set([
+  "command.started",
+  "command.stdout.chunk",
+  "command.stderr.chunk",
+  "command.completed",
+  "shell.command.started",
+  "shell.command.completed",
+  "runtime.sandbox.command.started",
+  "runtime.sandbox.command.completed",
+  "deploy.command.started",
+  "deploy.command.completed",
+  "replay.command.started",
+  "replay.command.completed",
+  "node.command.started",
+  "node.command.completed"
+]);
+
+function normalizeDiffHunks(hunks) {
+  if (!Array.isArray(hunks)) return [];
+  return hunks
+    .map((hunk) => {
+      const header = String(hunk?.header || "@@ @@");
+      const lines = Array.isArray(hunk?.lines)
+        ? hunk.lines
+            .map((line) => {
+              if (line && typeof line === "object" && typeof line.sign === "string") {
+                return { sign: line.sign === "-" ? "-" : line.sign === "+" ? "+" : " ", text: String(line.text || "") };
+              }
+              const raw = String(line || "");
+              const sign = raw.startsWith("-") ? "-" : raw.startsWith("+") ? "+" : " ";
+              return { sign, text: raw.replace(/^[-+ ]/, "") };
+            })
+            .filter(Boolean)
+        : [];
+      return { header, lines };
+    })
+    .filter((hunk) => hunk.lines.length > 0);
+}
+
+function clearThinkingPending(thinkingPending, lane = "") {
+  const laneText = String(lane || "").trim();
+  for (const [thinkingId, card] of thinkingPending.entries()) {
+    if (!laneText || !card?.lane || card.lane === laneText) {
+      thinkingPending.delete(thinkingId);
+    }
+  }
+}
+
+function validateRuntimeCommandCard(card) {
+  const missing = [];
+  const command = firstMeaningfulRuntimeField("command", card?.command);
+  const cwd = firstMeaningfulRuntimeField("cwd", card?.cwd);
+  const shell = firstMeaningfulRuntimeField("shell", card?.shell);
+  if (!command) missing.push("command");
+  if (!cwd) missing.push("cwd");
+  if (!shell) missing.push("shell");
+  const status = String(card?.status || "").toLowerCase();
+  const terminal = status === "completed" || status === "failed" || status === "blocked" || status === "cancelled";
+  if (terminal) {
+    if (!firstNonEmptyString(card?.started_at)) missing.push("startedAt");
+    if (!firstNonEmptyString(card?.finished_at)) missing.push("finishedAt");
+    if (!Number.isFinite(Number(card?.duration_ms))) missing.push("durationMs");
+    if (!Number.isFinite(Number(card?.exit_code))) missing.push("exitCode");
+    if (typeof card?.stdout !== "string") missing.push("stdout");
+    if (typeof card?.stderr !== "string") missing.push("stderr");
+  }
+  return {
+    valid: missing.length === 0,
+    missing
+  };
+}
+
+function runtimeInvalidPayloadCard(runId, seq, at, lane, sourceType, missing = []) {
+  return {
+    id: `invalid_payload_${runId}_${seq}_${missing.join("_")}`,
+    kind: "failure",
+    run_id: runId,
+    event_id: `${runId}:${seq}:event_payload_invalid`,
+    artifact_id: "none",
+    title: "Event Payload Invalid",
+    status: "failed",
+    lane: lane || "system",
+    at: at || now(),
+    seq: Number(seq || 0),
+    body: `event_payload_invalid: ${String(sourceType || "command_event")} missing ${missing.join(", ")}`,
+    defaultCollapsed: false
+  };
+}
+
+function buildRuntimeCardsForRun(runId, runData) {
+  const events = Array.isArray(runData?.events) ? [...runData.events] : [];
+  if (!events.length) return [];
+  events.sort((a, b) => Number(a?.seq || 0) - Number(b?.seq || 0));
+  const cards = [];
+  const commandCards = new Map();
+  const verifyCards = new Map();
+  const compactionCards = new Map();
+  const thinkingPending = new Map();
+  const seenDiffPaths = new Set();
+
+  const ensureCompactionCard = (compactKey, defaults = {}) => {
+    const key = String(compactKey || "").trim();
+    if (!key) return null;
+    if (!compactionCards.has(key)) {
+      compactionCards.set(key, {
+        id: `context_compaction_${runId}_${key}`,
+        kind: "context-compaction",
+        run_id: runId,
+        event_id: `${runId}:${key}`,
+        artifact_id: "none",
+        title: "Automatically compacting context",
+        status: "running",
+        lane: "task",
+        at: now(),
+        seq: Number.MAX_SAFE_INTEGER - 200,
+        trigger_type: "auto",
+        reason: null,
+        snapshot_id: null,
+        context_compaction_id: key,
+        receipt_id: null,
+        error_code: null,
+        error_message: null,
+        fallback_status: null,
+        source_event_range: null,
+        quality_checks: null,
+        manual: false,
+        consumed: false,
+        defaultCollapsed: false,
+        ...defaults
+      });
+    }
+    return compactionCards.get(key);
+  };
+
+  for (const event of events) {
+    const kind = String(event?.kind || event?.type || "").trim();
+    const payload = event?.payload && typeof event.payload === "object" ? event.payload : {};
+    const seq = Number(event?.seq || 0);
+    const at = String(event?.timestamp || event?.ts || event?.created_at || now());
+    const lane = String(event?.lane || payload?.lane || "task");
+
+    if (kind === "thinking.started") {
+      const thinkingId = String(payload?.thinking_id || event?.event_id || `${runId}:${seq}`);
+      thinkingPending.set(thinkingId, {
+        id: `thinking_${thinkingId}`,
+        kind: "thinking",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: "none",
+        title: "Thinking",
+        status: "running",
+        lane,
+        at,
+        seq,
+        phase: String(payload?.phase || lane || "task"),
+        defaultCollapsed: false
+      });
+      continue;
+    }
+    if (kind === "thinking.completed") {
+      const thinkingId = String(payload?.thinking_id || "");
+      if (thinkingId && thinkingPending.has(thinkingId)) {
+        thinkingPending.delete(thinkingId);
+      } else {
+        const completedPhase = String(payload?.phase || "");
+        for (const [id, card] of thinkingPending.entries()) {
+          if (!completedPhase || card.phase === completedPhase) {
+            thinkingPending.delete(id);
+          }
+        }
+      }
+      continue;
+    }
+
+    if (kind.startsWith("context.compaction.")) {
+      const manualRequested =
+        payload?.manual === true ||
+        /manual/i.test(String(payload?.trigger_type || "")) ||
+        /manual/i.test(String(payload?.requested_by || ""));
+      if (kind === "context.compaction.skipped" && !manualRequested) {
+        continue;
+      }
+      const compactKey = String(
+        payload?.context_compaction_id || payload?.snapshot_id || payload?.idempotency_key || `${runId}:${seq}`
+      );
+      const card = ensureCompactionCard(compactKey, {
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        at,
+        seq,
+        trigger_type: String(payload?.trigger_type || "auto"),
+        reason: firstNonEmptyString(payload?.reason),
+        manual: manualRequested
+      });
+      if (!card) continue;
+      card.at = at;
+      card.seq = Math.min(Number(card.seq || seq), seq);
+      card.trigger_type = String(payload?.trigger_type || card.trigger_type || "auto");
+      card.reason = firstNonEmptyString(payload?.reason, card.reason);
+      card.snapshot_id = firstNonEmptyString(payload?.snapshot_id, card.snapshot_id);
+      card.context_compaction_id = firstNonEmptyString(payload?.context_compaction_id, card.context_compaction_id, compactKey);
+      card.source_event_range =
+        payload?.source_event_range && typeof payload.source_event_range === "object"
+          ? payload.source_event_range
+          : card.source_event_range;
+      card.quality_checks =
+        payload?.quality_checks && typeof payload.quality_checks === "object" ? payload.quality_checks : card.quality_checks;
+      card.error_code = firstNonEmptyString(payload?.error_code, card.error_code);
+      card.error_message = firstNonEmptyString(payload?.error_message, card.error_message);
+      card.fallback_status = firstNonEmptyString(payload?.fallback_status, card.fallback_status);
+      card.manual = manualRequested || card.manual;
+
+      if (kind === "context.compaction.started") {
+        card.title = "Automatically compacting context";
+        card.status = "running";
+      } else if (kind === "context.compaction.completed") {
+        card.title = "Context automatically compacted";
+        card.status = "completed";
+      } else if (kind === "context.compaction.failed") {
+        card.title = "Context compaction failed";
+        card.status = "failed";
+      } else if (kind === "context.compaction.skipped") {
+        card.title = "Context compaction skipped";
+        card.status = "skipped";
+      } else if (kind === "context.compaction.consumed") {
+        card.consumed = true;
+        card.status = card.status === "running" ? "completed" : card.status;
+      }
+      continue;
+    }
+
+    if (kind === "run.context.receipt.available") {
+      const snapshotId = firstNonEmptyString(payload?.consumed_snapshot_id);
+      const receiptId = firstNonEmptyString(payload?.receipt_id);
+      if (snapshotId) {
+        for (const card of compactionCards.values()) {
+          if (String(card.snapshot_id || "") === snapshotId) {
+            card.receipt_id = receiptId || card.receipt_id;
+            card.consumed = true;
+            if (card.status === "running") {
+              card.status = "completed";
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    if (kind === "entry.task.plan.available" || kind === "model.action.plan.available") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `plan_${runId}_${seq}`,
+        kind: "plan",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: kind === "model.action.plan.available" ? "Model Action Plan" : "Plan",
+        status: String(payload?.status || "completed"),
+        lane,
+        at,
+        seq,
+        plan:
+          payload?.plan && typeof payload.plan === "object"
+            ? payload.plan
+            : kind === "model.action.plan.available"
+              ? {
+                  task_type: "model_action_contract",
+                  risk_level: "guarded",
+                  requires_auth: false,
+                  requires_deploy: false,
+                  verification_strategy: "action -> resolver -> policy -> executor",
+                  affected_files: []
+                }
+              : {},
+        actions_count: Number(payload?.actions_count || 0),
+        artifact_ref: payload?.artifact_ref || null,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "entry.task.file.locate.completed") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `locate_${runId}_${seq}`,
+        kind: "file-locate",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "File Locate",
+        status: String(payload?.status || "completed"),
+        lane,
+        at,
+        seq,
+        target_files: Array.isArray(payload?.target_files) ? payload.target_files : [],
+        missing_targets: Array.isArray(payload?.missing_targets) ? payload.missing_targets : [],
+        artifact_ref: payload?.artifact_ref || null,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "entry.task.verify.resolver.selected") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `verify_resolver_${runId}_${seq}`,
+        kind: "verify-resolver",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Verify Resolver",
+        status: String(payload?.status || "completed"),
+        lane,
+        at,
+        seq,
+        language: String(payload?.language || "unknown"),
+        selected_command: firstNonEmptyString(payload?.selected_command),
+        fallback_used: payload?.fallback_used === true,
+        tool_missing: payload?.tool_missing === true,
+        dry_run_detected: payload?.dry_run_detected === true,
+        coverage_summary: payload?.coverage_summary && typeof payload.coverage_summary === "object" ? payload.coverage_summary : null,
+        artifact_ref: payload?.artifact_ref || null,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "command.resolved") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `command_resolved_${runId}_${seq}`,
+        kind: "diagnosis",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Resolved Command",
+        status: String(payload?.status || "completed"),
+        lane,
+        at,
+        seq,
+        message: `action -> resolver -> policy -> executor`,
+        command: firstNonEmptyString(payload?.command),
+        exit_code: null,
+        stdout: "",
+        stderr: firstNonEmptyString(payload?.policy_reason),
+        artifact_ref: payload?.artifact_ref || null,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "command.proposed") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `command_proposed_${runId}_${seq}`,
+        kind: "diagnosis",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Command Proposed",
+        status: String(payload?.status || "proposed"),
+        lane,
+        at,
+        seq,
+        message: "command proposal waiting execution",
+        command: firstMeaningfulRuntimeField("command", event?.command, payload?.command, payload?.command_summary),
+        exit_code: null,
+        stdout: "",
+        stderr: "",
+        artifact_ref: payload?.artifact_ref || null,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "toolchain.missing") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `toolchain_missing_${runId}_${seq}`,
+        kind: "failure",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Toolchain Missing",
+        status: String(payload?.status || "failed"),
+        lane,
+        at,
+        seq,
+        body: `tool=${firstNonEmptyString(payload?.tool, "unknown")} approval_required=${payload?.requires_approval === true ? "true" : "false"}`,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "diagnosis.note" || kind === "agent.note" || kind === "repair.note") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `diagnosis_${runId}_${seq}`,
+        kind: "diagnosis",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: kind === "agent.note" ? "Agent Note" : kind === "repair.note" ? "Repair Note" : "Diagnosis",
+        status: String(payload?.status || (kind === "agent.note" ? "running" : "completed")),
+        lane,
+        at,
+        seq,
+        message: firstNonEmptyString(payload?.message, payload?.reason, payload?.failure_summary),
+        command: firstNonEmptyString(payload?.command),
+        exit_code: Number.isFinite(Number(payload?.exit_code)) ? Number(payload.exit_code) : null,
+        stdout: firstNonEmptyString(payload?.stdout, payload?.stdout_summary),
+        stderr: firstNonEmptyString(payload?.stderr, payload?.stderr_summary, payload?.failure_summary),
+        artifact_ref: payload?.artifact_ref || null,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "repair.loop.available") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `repair_loop_${runId}_${seq}`,
+        kind: "repair-loop",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Repair Rounds",
+        status: String(payload?.status || "completed"),
+        lane,
+        at,
+        seq,
+        rounds: Number(payload?.rounds || 0),
+        attempts_used: Number(payload?.attempts_used || 0),
+        repair_started_count: Number(payload?.repair_started_count || 0),
+        repair_completed_count: Number(payload?.repair_completed_count || 0),
+        consumed_failure_events: payload?.consumed_failure_events === true,
+        artifact_ref: payload?.artifact_ref || null,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "deploy.authorization.required") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `deploy_gate_${runId}_${seq}`,
+        kind: "deploy-gate",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Deploy Authorization",
+        status: String(payload?.status || "waiting_user"),
+        lane,
+        at,
+        seq,
+        mode: String(payload?.mode || "dry_run"),
+        provider: String(payload?.provider || "generic"),
+        artifact_ref: payload?.artifact_ref || null,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "user.message") {
+      const message = firstNonEmptyString(payload?.message, payload?.raw_text, payload?.prompt, payload?.prompt_text);
+      if (!message) {
+        continue;
+      }
+      cards.push({
+        id: `user_${runId}_${seq}`,
+        kind: "user",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: "none",
+        title: "User",
+        status: "completed",
+        lane: "chat",
+        at,
+        seq,
+        body: message,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (
+      (kind === "step.completed" || kind === "assistant.reply" || kind === "assistant.message") &&
+      firstNonEmptyString(payload?.message, payload?.summary, payload?.answer, payload?.final_answer, payload?.final_summary)
+    ) {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `assistant_${runId}_${seq}`,
+        kind: "assistant",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(event?.artifact_ref || payload?.artifact_ref),
+        title: "Assistant",
+        status: "completed",
+        lane,
+        at,
+        seq,
+        body: firstNonEmptyString(payload?.message, payload?.summary, payload?.answer, payload?.final_answer, payload?.final_summary),
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (COMMAND_EVENT_KINDS.has(kind)) {
+      clearThinkingPending(thinkingPending, lane);
+      const card = ensureRuntimeCommandCard(runId, event, payload, commandCards);
+      card.seq = Math.min(Number(card.seq || seq), seq);
+      card.run_id = firstNonEmptyString(card.run_id, runId);
+      card.event_id = firstNonEmptyString(card.event_id, event?.event_id, event?.id, `${runId}:${seq}`);
+      card.source_type = kind;
+      card.artifact_id = normalizeRuntimeArtifactId(card.artifact_id || event?.artifact_ref || payload?.artifact_ref || payload?.artifact_id);
+      if (
+        kind === "command.started" ||
+        kind === "shell.command.started" ||
+        kind === "runtime.sandbox.command.started" ||
+        kind === "deploy.command.started" ||
+        kind === "replay.command.started" ||
+        kind === "node.command.started"
+      ) {
+        card.status = String(event?.status || payload?.status || "running");
+        card.command = firstMeaningfulRuntimeField(
+          "command",
+          event?.command,
+          payload?.command,
+          payload?.command_summary,
+          payload?.failed_command,
+          payload?.adjusted_command,
+          card.command
+        );
+        card.cwd = firstMeaningfulRuntimeField("cwd", event?.cwd, payload?.cwd, payload?.adjusted_cwd, card.cwd);
+        card.shell = firstMeaningfulRuntimeField("shell", event?.shell, payload?.shell, payload?.shell_type, card.shell);
+        card.started_at = firstNonEmptyString(event?.startedAt, payload?.started_at, payload?.startedAt, card.started_at);
+      } else if (kind === "command.stdout.chunk" || kind === "command.stderr.chunk") {
+        const streamByType = kind === "command.stderr.chunk" ? "stderr" : "stdout";
+        const stream = String(payload?.stream || streamByType).toLowerCase() === "stderr" ? "stderr" : "stdout";
+        const chunk = firstNonEmptyString(payload?.chunk, event?.stdout, event?.stderr);
+        if (chunk) {
+          card[stream] = `${card[stream] || ""}${chunk}`;
+        }
+      } else if (
+        kind === "command.completed" ||
+        kind === "shell.command.completed" ||
+        kind === "runtime.sandbox.command.completed" ||
+        kind === "deploy.command.completed" ||
+        kind === "replay.command.completed" ||
+        kind === "node.command.completed"
+      ) {
+        card.status = String(event?.status || payload?.status || "completed");
+        card.command = firstMeaningfulRuntimeField(
+          "command",
+          event?.command,
+          payload?.command,
+          payload?.command_summary,
+          payload?.failed_command,
+          payload?.adjusted_command,
+          card.command
+        );
+        card.cwd = firstMeaningfulRuntimeField("cwd", event?.cwd, payload?.cwd, payload?.adjusted_cwd, card.cwd);
+        card.shell = firstMeaningfulRuntimeField("shell", event?.shell, payload?.shell, payload?.shell_type, card.shell);
+        if (Number.isFinite(Number(event?.exitCode))) {
+          card.exit_code = Number(event.exitCode);
+        } else if (Number.isFinite(Number(payload?.exit_code))) {
+          card.exit_code = Number(payload.exit_code);
+        }
+        if (Number.isFinite(Number(event?.durationMs))) {
+          card.duration_ms = Number(event.durationMs);
+        } else if (Number.isFinite(Number(payload?.duration_ms))) {
+          card.duration_ms = Number(payload.duration_ms);
+        }
+        card.started_at = firstNonEmptyString(event?.startedAt, payload?.started_at, payload?.startedAt, card.started_at);
+        card.artifact_ref = event?.artifact_ref || payload?.artifact_ref || card.artifact_ref || null;
+        card.artifact_id = normalizeRuntimeArtifactId(card.artifact_ref || card.artifact_id);
+        card.finished_at = firstNonEmptyString(
+          event?.finishedAt,
+          payload?.finished_at,
+          payload?.finishedAt,
+          payload?.completed_at,
+          payload?.completedAt,
+          card.finished_at
+        );
+        if (!card.stdout && typeof event?.stdout === "string") {
+          card.stdout = event.stdout;
+        } else if (!card.stdout && typeof payload?.stdout === "string") {
+          card.stdout = payload.stdout;
+        } else if (!card.stdout && typeof payload?.stdout_summary === "string") {
+          card.stdout = payload.stdout_summary;
+        }
+        if (!card.stderr && typeof event?.stderr === "string") {
+          card.stderr = event.stderr;
+        } else if (!card.stderr && typeof payload?.stderr === "string") {
+          card.stderr = payload.stderr;
+        } else if (!card.stderr && typeof payload?.stderr_summary === "string") {
+          card.stderr = payload.stderr_summary;
+        }
+      }
+      continue;
+    }
+
+    if (
+      kind === "verify.started" ||
+      kind === "verify.failed" ||
+      kind === "verify.passed" ||
+      kind === "verify.completed" ||
+      kind === "engineering.verify.started" ||
+      kind === "engineering.verify.failed" ||
+      kind === "engineering.verify.completed"
+    ) {
+      clearThinkingPending(thinkingPending, lane);
+      const commandText = firstNonEmptyString(event?.command, payload?.command, payload?.command_summary);
+      const stage = Number(payload?.stage_index || 0);
+      const attempt = Number(payload?.attempt || 0);
+      const key = `${runId}|${event?.step_id || payload?.step_id || ""}|a${attempt}|s${stage}|${commandText}`;
+      if (!verifyCards.has(key)) {
+        verifyCards.set(key, {
+          id: `verify_${key}`,
+          kind: "verify",
+          run_id: runId,
+          event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+          artifact_id: normalizeRuntimeArtifactId(event?.artifact_ref || payload?.artifact_ref || payload?.artifact_id),
+          title: "Verify",
+          status: "running",
+          lane,
+          at,
+          seq,
+          command: commandText,
+          reason: "",
+          cwd: firstNonEmptyString(event?.cwd, payload?.cwd),
+          exit_code: Number.isFinite(Number(event?.exitCode))
+            ? Number(event.exitCode)
+            : Number.isFinite(Number(payload?.exit_code))
+              ? Number(payload.exit_code)
+              : null,
+          duration_ms: Number.isFinite(Number(event?.durationMs))
+            ? Number(event.durationMs)
+            : Number.isFinite(Number(payload?.duration_ms))
+              ? Number(payload.duration_ms)
+              : null,
+          stdout: firstNonEmptyString(event?.stdout, payload?.stdout, payload?.stdout_text, payload?.stdout_summary),
+          stderr: firstNonEmptyString(event?.stderr, payload?.stderr, payload?.stderr_text, payload?.stderr_summary, payload?.failure_summary),
+          artifact_ref: event?.artifact_ref || payload?.artifact_ref || null,
+          defaultCollapsed: true
+        });
+      }
+      const verify = verifyCards.get(key);
+      verify.run_id = firstNonEmptyString(verify.run_id, runId);
+      verify.event_id = firstNonEmptyString(verify.event_id, event?.event_id, event?.id, `${runId}:${seq}`);
+      const payloadStatus = String(payload?.status || "").toLowerCase();
+      const exitCode = Number(payload?.exit_code);
+      if (kind === "verify.failed" || kind === "engineering.verify.failed") {
+        verify.status = "failed";
+        verify.reason = String(payload?.reason || payload?.failure_summary || "");
+      } else if (kind === "verify.passed" || kind === "verify.completed") {
+        verify.status = "completed";
+      } else if (kind === "engineering.verify.completed") {
+        verify.status = payloadStatus === "failed" || (Number.isFinite(exitCode) && exitCode !== 0) ? "failed" : "completed";
+        if (verify.status === "failed" && !verify.reason) {
+          verify.reason = String(payload?.failure_summary || payload?.stderr_summary || "verify_failed");
+        }
+      } else {
+        verify.status = "running";
+      }
+      verify.command = firstNonEmptyString(verify.command, event?.command, payload?.command, payload?.command_summary);
+      verify.cwd = firstNonEmptyString(verify.cwd, event?.cwd, payload?.cwd);
+      if (Number.isFinite(Number(event?.exitCode))) {
+        verify.exit_code = Number(event.exitCode);
+      } else if (Number.isFinite(Number(payload?.exit_code))) {
+        verify.exit_code = Number(payload.exit_code);
+      }
+      if (Number.isFinite(Number(event?.durationMs))) {
+        verify.duration_ms = Number(event.durationMs);
+      } else if (Number.isFinite(Number(payload?.duration_ms))) {
+        verify.duration_ms = Number(payload.duration_ms);
+      }
+      if (!verify.stdout) {
+        verify.stdout = firstNonEmptyString(event?.stdout, payload?.stdout, payload?.stdout_text, payload?.stdout_summary);
+      }
+      if (!verify.stderr) {
+        verify.stderr = firstNonEmptyString(event?.stderr, payload?.stderr, payload?.stderr_text, payload?.stderr_summary, payload?.failure_summary);
+      }
+      verify.artifact_ref = verify.artifact_ref || event?.artifact_ref || payload?.artifact_ref || null;
+      verify.artifact_id = normalizeRuntimeArtifactId(verify.artifact_ref || verify.artifact_id);
+      continue;
+    }
+
+    if (kind === "diff.available") {
+      clearThinkingPending(thinkingPending, lane);
+      const relPath = String(payload?.path || payload?.rel_path || "");
+      if (relPath) seenDiffPaths.add(relPath);
+      cards.push({
+        id: `diff_${runId}_${seq}`,
+        kind: "diff",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Diff",
+        status: String(payload?.status || "completed"),
+        lane,
+        at,
+        seq,
+        path: relPath,
+        action: String(payload?.action || "update"),
+        hunks: normalizeDiffHunks(payload?.hunks),
+        artifact_ref: payload?.artifact_ref || null,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "repair.started" || kind === "repair.completed") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `repair_${runId}_${seq}`,
+        kind: "repair",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Repair Loop",
+        status: String(payload?.status || (kind.endsWith(".completed") ? "completed" : "running")),
+        lane,
+        at,
+        seq,
+        attempt: payload?.attempt ?? null,
+        body: kind === "repair.completed" ? "Repair attempt completed" : "Repair attempt running",
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "review.available") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `review_${runId}_${seq}`,
+        kind: "review",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Review",
+        status: String(payload?.status || "completed"),
+        lane,
+        at,
+        seq,
+        summary: firstNonEmptyString(payload?.summary, payload?.acceptance_summary, payload?.message),
+        artifact_ref: payload?.artifact_ref || null,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "acceptance.started" || kind === "acceptance.completed" || kind === "acceptance.failed") {
+      clearThinkingPending(thinkingPending, lane);
+      cards.push({
+        id: `acceptance_${runId}_${seq}`,
+        kind: "acceptance",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Acceptance",
+        status: String(payload?.status || (kind.endsWith(".failed") ? "failed" : kind.endsWith(".completed") ? "completed" : "running")),
+        lane,
+        at,
+        seq,
+        artifact_ref: payload?.artifact_ref || null,
+        acceptance_artifact_ref: payload?.acceptance_artifact_ref || null,
+        acceptance_status: payload?.acceptance_status || null,
+        verify_coverage: payload?.verify_coverage || null,
+        relaxed_by_verify_reason: payload?.relaxed_by_verify_reason || null,
+        checks: Array.isArray(payload?.checks) ? payload.checks : [],
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind.startsWith("approval.")) {
+      cards.push({
+        id: `approval_${runId}_${seq}`,
+        kind: "approval",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Approval",
+        status: String(payload?.status || (kind.includes("failed") ? "failed" : kind.includes("waiting") ? "waiting_user" : "completed")),
+        lane,
+        at,
+        seq,
+        phase: kind,
+        mode: String(payload?.mode || ""),
+        provider: String(payload?.provider || ""),
+        retryable: payload?.retryable === true,
+        defaultCollapsed: false
+      });
+      continue;
+    }
+
+    if (kind === "step.failed_controlled") {
+      cards.push({
+        id: `failed_${runId}_${seq}`,
+        kind: "failure",
+        run_id: runId,
+        event_id: firstNonEmptyString(event?.event_id, event?.id, `${runId}:${seq}`),
+        artifact_id: normalizeRuntimeArtifactId(payload?.artifact_ref || payload?.artifact_id),
+        title: "Runtime Failure",
+        status: "failed",
+        lane,
+        at,
+        seq,
+        body: String(payload?.reason || "failed_controlled"),
+        defaultCollapsed: false
+      });
+      continue;
+    }
+  }
+
+  for (const command of commandCards.values()) {
+    const validation = validateRuntimeCommandCard(command);
+    if (!validation.valid) {
+      cards.push(
+        runtimeInvalidPayloadCard(
+          runId,
+          command.seq,
+          command.at,
+          command.lane,
+          command.source_type || command.kind || "command",
+          validation.missing
+        )
+      );
+      continue;
+    }
+    cards.push(command);
+  }
+  for (const verify of verifyCards.values()) {
+    cards.push(verify);
+  }
+  for (const contextCompaction of compactionCards.values()) {
+    cards.push(contextCompaction);
+  }
+  for (const thinking of thinkingPending.values()) {
+    cards.push(thinking);
+  }
+
+  if (seenDiffPaths.size === 0) {
+    const fileChanges = Array.isArray(runData?.file_changes) ? runData.file_changes : [];
+    for (const change of fileChanges) {
+      cards.push({
+        id: `filechange_${runId}_${change.id || change.path || Math.random().toString(16).slice(2)}`,
+        kind: "diff",
+        run_id: runId,
+        event_id: firstNonEmptyString(change?.id, `${runId}:${change?.path || "filechange"}`),
+        artifact_id: "none",
+        title: "Diff",
+        status: "completed",
+        lane: "task",
+        at: String(change?.created_at || now()),
+        seq: Number.MAX_SAFE_INTEGER - 1000,
+        path: String(change?.path || ""),
+        action: String(change?.action || "update"),
+        hunks: [],
+        artifact_ref: null,
+        defaultCollapsed: false
+      });
+    }
+  }
+
+  cards.sort((a, b) => {
+    const sa = runtimeSortValue(a);
+    const sb = runtimeSortValue(b);
+    if (sa.seq !== sb.seq) return sa.seq - sb.seq;
+    if (sa.ts !== sb.ts) return sa.ts - sb.ts;
+    return String(a.id).localeCompare(String(b.id));
+  });
+  return cards;
+}
+
+function buildRuntimeCardsForSession(sessionId) {
+  const cards = [];
+  const runIds = currentSessionRunIds(sessionId);
+  for (const runId of runIds) {
+    const runData = state.runtimeRuns?.[runId];
+    if (!runData) continue;
+    cards.push(...buildRuntimeCardsForRun(runId, runData));
+  }
+  cards.sort((a, b) => {
+    const sa = runtimeSortValue(a);
+    const sb = runtimeSortValue(b);
+    if (sa.seq !== sb.seq) return sa.seq - sb.seq;
+    if (sa.ts !== sb.ts) return sa.ts - sb.ts;
+    return String(a.id).localeCompare(String(b.id));
+  });
+  return cards;
+}
+
+function isRuntimeCardCollapsed(card) {
+  const key = runtimeCardCollapseKey(card);
+  if (!key) return false;
+  if (Object.prototype.hasOwnProperty.call(state.runtimeCardCollapse, key)) {
+    return !!state.runtimeCardCollapse[key];
+  }
+  const legacyKey = String(card?.id || "");
+  if (legacyKey && Object.prototype.hasOwnProperty.call(state.runtimeCardCollapse, legacyKey)) {
+    return !!state.runtimeCardCollapse[legacyKey];
+  }
+  return card?.defaultCollapsed === true;
+}
+
+function renderRuntimeDiffHunks(hunks) {
+  if (!Array.isArray(hunks) || hunks.length === 0) {
+    return `<div class="runtime-note">No inline hunk payload. File change recorded.</div>`;
+  }
+  return hunks
+    .map((hunk) => {
+      const linesHtml = (Array.isArray(hunk.lines) ? hunk.lines : [])
+        .map((line) => `<div class="diff-line ${line.sign === "+" ? "plus" : line.sign === "-" ? "minus" : "ctx"}"><span>${esc(line.sign)}</span><code>${esc(line.text)}</code></div>`)
+        .join("");
+      return `<section class="diff-hunk"><div class="diff-hunk-head">${esc(hunk.header || "@@ @@")}</div>${linesHtml}</section>`;
+    })
+    .join("");
+}
+
+function runtimeCardBodyHtml(card) {
+  if (card.kind === "thinking") {
+    return `<div class="thinking-body"><span class="thinking-label">Thinking</span><span class="runtime-note">${esc(card.phase || card.lane || "task")}</span></div>`;
+  }
+  if (card.kind === "context-compaction") {
+    const status = String(card.status || "running");
+    const labelText =
+      status === "completed"
+        ? "Context automatically compacted"
+        : status === "failed"
+          ? "Context compaction failed"
+          : status === "skipped"
+            ? "Context compaction skipped"
+            : "Automatically compacting context";
+    const qualityChecks = card.quality_checks && typeof card.quality_checks === "object" ? card.quality_checks : null;
+    return `<div class="compaction-body"><span class="compaction-label ${esc(status)}">${esc(labelText)}</span><div class="runtime-note"><b>trigger:</b> ${esc(card.trigger_type || "auto")} · <b>manual:</b> ${card.manual ? "yes" : "no"}${card.snapshot_id ? `<br/><b>snapshot_id:</b> <code>${esc(card.snapshot_id)}</code>` : ""}${card.context_compaction_id ? `<br/><b>context_compaction_id:</b> <code>${esc(card.context_compaction_id)}</code>` : ""}${card.reason ? `<br/><b>reason:</b> ${esc(card.reason)}` : ""}${card.source_event_range ? `<br/><b>source_event_range:</b> ${esc(card.source_event_range.from_seq ?? "-")} -> ${esc(card.source_event_range.to_seq ?? "-")}` : ""}${card.receipt_id ? `<br/><b>receipt_id:</b> <code>${esc(card.receipt_id)}</code>` : ""}${card.consumed ? `<br/><b>consumed:</b> true` : ""}${card.error_code ? `<br/><b>error_code:</b> ${esc(card.error_code)}` : ""}${card.error_message ? `<br/><b>error_message:</b> ${esc(card.error_message)}` : ""}${card.fallback_status ? `<br/><b>fallback:</b> ${esc(card.fallback_status)}` : ""}${qualityChecks ? `<br/><b>quality:</b> ${esc(JSON.stringify(qualityChecks))}` : ""}</div></div>`;
+  }
+  if (card.kind === "plan") {
+    const plan = card.plan && typeof card.plan === "object" ? card.plan : {};
+    const affectedFiles = Array.isArray(plan.affected_files) ? plan.affected_files : [];
+    return `<dl class="runtime-kv"><dt>task</dt><dd>${esc(plan.task_type || "entry_targeted_patch")}</dd><dt>risk</dt><dd>${esc(plan.risk_level || "normal")}</dd><dt>requires_auth</dt><dd>${plan.requires_auth ? "yes" : "no"}</dd><dt>requires_deploy</dt><dd>${plan.requires_deploy ? "yes" : "no"}</dd><dt>verification</dt><dd>${esc(plan.verification_strategy || "-")}</dd>${card.artifact_ref ? `<dt>artifact</dt><dd><code>${esc(card.artifact_ref)}</code></dd>` : ""}</dl>${affectedFiles.length ? `<div class="runtime-note"><b>affected files:</b><br/>${affectedFiles.map((x) => `<code>${esc(x)}</code>`).join("<br/>")}</div>` : ""}`;
+  }
+  if (card.kind === "file-locate") {
+    const targets = Array.isArray(card.target_files) ? card.target_files : [];
+    const missing = Array.isArray(card.missing_targets) ? card.missing_targets : [];
+    return `<div class="runtime-note"><b>targets:</b> ${targets.length ? targets.map((x) => `<code>${esc(x)}</code>`).join(", ") : "-"}</div>${missing.length ? `<div class="runtime-note"><b>missing:</b> ${missing.map((x) => `<code>${esc(x)}</code>`).join(", ")}<br/>Copy missing files into current project root, then retry.</div>` : `<div class="runtime-note">All target files resolved in current project root.</div>`}${card.artifact_ref ? `<div class="runtime-note"><b>artifact:</b> <code>${esc(card.artifact_ref)}</code></div>` : ""}`;
+  }
+  if (card.kind === "verify-resolver") {
+    return `<dl class="runtime-kv"><dt>language</dt><dd>${esc(card.language || "unknown")}</dd><dt>selected</dt><dd><code>${esc(card.selected_command || "-")}</code></dd><dt>fallback_used</dt><dd>${card.fallback_used ? "yes" : "no"}</dd><dt>tool_missing</dt><dd>${card.tool_missing ? "yes" : "no"}</dd><dt>dry_run</dt><dd>${card.dry_run_detected ? "yes" : "no"}</dd>${card.coverage_summary ? `<dt>coverage</dt><dd>${esc(card.coverage_summary.coverage || "-")} (${esc(card.coverage_summary.reason || "-")})</dd>` : ""}${card.artifact_ref ? `<dt>artifact</dt><dd><code>${esc(card.artifact_ref)}</code></dd>` : ""}</dl>`;
+  }
+  if (card.kind === "diagnosis") {
+    return `<div class="runtime-note">${esc(card.message || "-")}</div>${card.command ? `<div class="runtime-note"><b>command:</b> <code>${esc(card.command)}</code></div>` : ""}<dl class="runtime-kv"><dt>exit</dt><dd>${esc(card.exit_code ?? "-")}</dd>${card.artifact_ref ? `<dt>artifact</dt><dd><code>${esc(card.artifact_ref)}</code></dd>` : ""}</dl>${card.stdout || card.stderr ? `<div class="runtime-streams"><section><h4>stdout</h4><pre class="runtime-pre">${esc(card.stdout || "")}</pre></section><section><h4>stderr</h4><pre class="runtime-pre">${esc(card.stderr || "")}</pre></section></div>` : ""}`;
+  }
+  if (card.kind === "repair-loop") {
+    return `<div class="runtime-note"><b>attempts:</b> ${esc(card.attempts_used ?? "-")} · <b>rounds:</b> ${esc(card.rounds ?? "-")} · <b>started/completed:</b> ${esc(card.repair_started_count ?? "-")}/${esc(card.repair_completed_count ?? "-")} · <b>consumed_failures:</b> ${card.consumed_failure_events ? "yes" : "no"}${card.artifact_ref ? `<br/><b>artifact:</b> <code>${esc(card.artifact_ref)}</code>` : ""}</div>`;
+  }
+  if (card.kind === "deploy-gate") {
+    return `<div class="runtime-note"><b>mode:</b> ${esc(card.mode || "dry_run")}<br/><b>provider:</b> ${esc(card.provider || "generic")}<br/><b>status:</b> ${esc(card.status || "waiting_user")}${card.artifact_ref ? `<br/><b>artifact:</b> <code>${esc(card.artifact_ref)}</code>` : ""}</div>`;
+  }
+  if (card.kind === "user" || card.kind === "assistant" || card.kind === "failure" || card.kind === "repair") {
+    return `<pre class="runtime-pre">${esc(card.body || "")}</pre>`;
+  }
+  if (card.kind === "command") {
+    return `<dl class="runtime-kv"><dt>status</dt><dd>${esc(String(card.status || ""))}</dd><dt>command</dt><dd><code>${esc(String(card.command || ""))}</code></dd><dt>cwd</dt><dd><code>${esc(String(card.cwd || ""))}</code></dd><dt>shell</dt><dd>${esc(String(card.shell || ""))}</dd><dt>exit</dt><dd>${esc(String(card.exit_code))}</dd><dt>duration</dt><dd>${esc(String(card.duration_ms))} ms</dd><dt>started</dt><dd>${esc(t(card.started_at))}</dd><dt>finished</dt><dd>${esc(t(card.finished_at))}</dd>${card.artifact_ref ? `<dt>artifact</dt><dd><code>${esc(card.artifact_ref)}</code></dd>` : ""}</dl><div class="runtime-streams"><section><h4>stdout</h4><pre class="runtime-pre">${esc(String(card.stdout || ""))}</pre></section><section><h4>stderr</h4><pre class="runtime-pre">${esc(String(card.stderr || ""))}</pre></section></div>`;
+  }
+  if (card.kind === "verify") {
+    return `<div class="runtime-note"><b>status:</b> ${esc(card.status || "running")}${card.command ? ` · <code>${esc(card.command)}</code>` : ""}${card.reason ? `<br/><b>reason:</b> ${esc(card.reason)}` : ""}</div><dl class="runtime-kv"><dt>cwd</dt><dd><code>${esc(card.cwd || "-")}</code></dd><dt>exit</dt><dd>${esc(card.exit_code ?? "-")}</dd><dt>duration</dt><dd>${esc(card.duration_ms ?? "-")} ms</dd>${card.artifact_ref ? `<dt>artifact</dt><dd><code>${esc(card.artifact_ref)}</code></dd>` : ""}</dl><div class="runtime-streams"><section><h4>stdout</h4><pre class="runtime-pre">${esc(card.stdout || "")}</pre></section><section><h4>stderr</h4><pre class="runtime-pre">${esc(card.stderr || "")}</pre></section></div>`;
+  }
+  if (card.kind === "diff") {
+    return `<div class="runtime-note"><b>file:</b> <code>${esc(card.path || "-")}</code> · <b>action:</b> ${esc(card.action || "update")}${card.artifact_ref ? `<br/><b>artifact:</b> <code>${esc(card.artifact_ref)}</code>` : ""}</div>${renderRuntimeDiffHunks(card.hunks)}`;
+  }
+  if (card.kind === "review") {
+    return `<div class="runtime-note"><b>summary:</b> ${esc(card.summary || "-")}${card.artifact_ref ? `<br/><b>artifact:</b> <code>${esc(card.artifact_ref)}</code>` : ""}</div>`;
+  }
+  if (card.kind === "acceptance") {
+    const checks = Array.isArray(card.checks) ? card.checks : [];
+    return `<div class="runtime-note"><b>status:</b> ${esc(card.status || "-")}${card.acceptance_status ? ` · <b>acceptance:</b> ${esc(card.acceptance_status)}` : ""}${card.verify_coverage ? ` · <b>verify_coverage:</b> ${esc(card.verify_coverage)}` : ""}${card.relaxed_by_verify_reason ? `<br/><b>relaxed_by_verify:</b> ${esc(card.relaxed_by_verify_reason)}` : ""}${card.artifact_ref ? `<br/><b>artifact:</b> <code>${esc(card.artifact_ref)}</code>` : ""}${card.acceptance_artifact_ref ? `<br/><b>acceptance_artifact:</b> <code>${esc(card.acceptance_artifact_ref)}</code>` : ""}</div>${checks.length ? `<ul class="runtime-checks">${checks.map((check) => `<li>${esc(check.check || "-")}: ${check.passed ? "passed" : "failed"}</li>`).join("")}</ul>` : ""}`;
+  }
+  if (card.kind === "approval") {
+    return `<div class="runtime-note"><b>phase:</b> ${esc(card.phase || "-")}<br/><b>mode:</b> ${esc(card.mode || "-")}<br/><b>provider:</b> ${esc(card.provider || "-")}<br/><b>retryable:</b> ${card.retryable ? "yes" : "no"}</div>`;
+  }
+  return `<div class="runtime-note">No renderer</div>`;
+}
+
+function runtimeCardHtml(card) {
+  const collapsed = isRuntimeCardCollapsed(card);
+  const status = String(card.status || "unknown");
+  const lane = String(card.lane || "task");
+  const collapsible = card.kind === "command" || card.kind === "verify" || card.kind === "diff";
+  const collapseKey = runtimeCardCollapseKey(card);
+  const bodyHtml = runtimeCardBodyHtml(card);
+  const headerMeta = `${esc(t(card.at))} · ${esc(lane)} · ${esc(status)}`;
+  return `<article class="runtime-card kind-${esc(card.kind)} status-${esc(status)} ${collapsed ? "collapsed" : ""}" data-runtime-card-id="${esc(card.id || "")}" data-runtime-collapse-key="${esc(collapseKey)}"><header class="runtime-card-head"><div><div class="runtime-card-title">${esc(card.title || card.kind)}</div><div class="runtime-card-meta">${headerMeta}</div></div>${collapsible ? `<button class="ghost-btn runtime-toggle-btn" data-action="toggle-runtime-card" data-id="${esc(card.id)}" data-key="${esc(collapseKey)}" aria-expanded="${collapsed ? "false" : "true"}">${collapsed ? "Expand" : "Collapse"}</button>` : ""}</header><div class="runtime-card-body">${bodyHtml}</div></article>`;
+}
+
 function cardsHtml() {
   const cs = currentSession();
   if (!cs) {
     return `<div class="empty-thread">No active session. Click <b>New Session</b> then send first message.</div>`;
+  }
+  const runtimeCards = buildRuntimeCardsForSession(cs.id);
+  if (runtimeCards.length) {
+    return runtimeCards.map((card) => runtimeCardHtml(card)).join("");
   }
   const cards = normalizeCardsForDisplay(thread(cs.id));
   if (!cards.length) {
@@ -1762,6 +3434,18 @@ function renderHomeMain(workspace, cls, atts) {
 }
 
 function renderSessionListItemTitle(session) {
+  const runIds = currentSessionRunIds(session.id);
+  for (let i = runIds.length - 1; i >= 0; i -= 1) {
+    const runData = state.runtimeRuns?.[runIds[i]];
+    const events = Array.isArray(runData?.events) ? runData.events : [];
+    for (let j = events.length - 1; j >= 0; j -= 1) {
+      const event = events[j];
+      const kind = String(event?.kind || event?.type || "");
+      if (kind !== "user.message") continue;
+      const text = String(event?.payload?.message || "").trim();
+      if (text) return text.slice(0, 36);
+    }
+  }
   return (thread(session.id).find((x) => x.displayType === DISPLAY_EVENT_TYPES.USER_MESSAGE)?.body || session.title || "Session").slice(0, 36);
 }
 
@@ -1793,6 +3477,7 @@ function homeHtml() {
 async function syncRunEventsFromBackend(sessionId, runId, { bootstrap = false } = {}) {
   if (!sessionId || !runId) return;
   const runData = await api(`/runs/${encodeURIComponent(runId)}`);
+  state.runtimeRuns[runId] = runData;
   const events = Array.isArray(runData?.events) ? runData.events : [];
   const displayEvents = Array.isArray(runData?.display_events) ? runData.display_events : [];
   const cursor = Number(state.runEventCursor[runId] || 0);
@@ -1807,27 +3492,29 @@ async function syncRunEventsFromBackend(sessionId, runId, { bootstrap = false } 
     });
   }
 
-  let freshDisplay = displayEvents
-    .map((event) => normalizeBackendDisplayEvent(event))
-    .filter((event) => event && isMainThreadDisplayEvent(event) && Number(event.seq || 0) > cursor);
-  if (cursor <= 0 && bootstrap && freshDisplay.length > 40) {
-    freshDisplay = freshDisplay.slice(-40);
-  }
-  for (const event of freshDisplay) {
-    const seq = Number.isFinite(Number(event.seq)) ? Number(event.seq) : null;
-    const eventKeyBase =
-      typeof event.dedupeKey === "string" && event.dedupeKey.trim()
-        ? event.dedupeKey.trim()
-        : seq !== null
-          ? `${seq}:${event.displayType}`
-          : `${event.displayType}:${event.createdAt || ""}:${event.body.slice(0, 24)}`;
-    const eventKey = `${runId}:${eventKeyBase}`;
-    appendDisplayEvent(sessionId, event.displayType, event.body, {
-      eventKey,
-      source: "backend_display_projection",
-      lane: event.lane || "chat",
-      at: event.createdAt || now()
-    });
+  if (events.length === 0) {
+    let freshDisplay = displayEvents
+      .map((event) => normalizeBackendDisplayEvent(event))
+      .filter((event) => event && isMainThreadDisplayEvent(event) && Number(event.seq || 0) > cursor);
+    if (cursor <= 0 && bootstrap && freshDisplay.length > 40) {
+      freshDisplay = freshDisplay.slice(-40);
+    }
+    for (const event of freshDisplay) {
+      const seq = Number.isFinite(Number(event.seq)) ? Number(event.seq) : null;
+      const eventKeyBase =
+        typeof event.dedupeKey === "string" && event.dedupeKey.trim()
+          ? event.dedupeKey.trim()
+          : seq !== null
+            ? `${seq}:${event.displayType}`
+            : `${event.displayType}:${event.createdAt || ""}:${event.body.slice(0, 24)}`;
+      const eventKey = `${runId}:${eventKeyBase}`;
+      appendDisplayEvent(sessionId, event.displayType, event.body, {
+        eventKey,
+        source: "backend_display_projection",
+        lane: event.lane || "chat",
+        at: event.createdAt || now()
+      });
+    }
   }
   const maxRuntimeSeq = events.length > 0 ? Number(events[events.length - 1]?.seq || 0) : 0;
   const maxDisplaySeq = displayEvents.length > 0 ? Number(displayEvents[displayEvents.length - 1]?.seq || 0) : 0;
@@ -1888,11 +3575,16 @@ async function syncSessionTurnsFromBackend(sessionId, { bootstrap = false } = {}
     patchSessionFromBackend(data.session);
   }
   const turns = Array.isArray(data?.turns) ? data.turns : [];
+  const runIds = [];
   for (const turn of turns) {
     const runId = String(turn?.run_id || "").trim();
     if (!runId) continue;
+    if (!runIds.includes(runId)) {
+      runIds.push(runId);
+    }
     await syncRunEventsFromBackend(sessionId, runId, { bootstrap });
   }
+  state.sessionRunIds[sessionId] = runIds;
 }
 
 async function waitForRunTerminal(sessionId, runId, { timeoutMs = 120000 } = {}) {
@@ -1902,7 +3594,12 @@ async function waitForRunTerminal(sessionId, runId, { timeoutMs = 120000 } = {})
     const details = await api(`/runs/${encodeURIComponent(runId)}`);
     latestStatus = String(details?.run?.status || latestStatus || "running");
     state.run.status = latestStatus;
-    await syncRunEventsFromBackend(sessionId, runId, { bootstrap: false });
+    const streamActive =
+      String(state.runtimeStream?.runId || "") === String(runId || "") &&
+      Boolean(state.runtimeStream?.source);
+    if (!streamActive) {
+      await syncRunEventsFromBackend(sessionId, runId, { bootstrap: false });
+    }
     render();
     if (!isRunActiveStatus(latestStatus)) {
       break;
@@ -1913,6 +3610,100 @@ async function waitForRunTerminal(sessionId, runId, { timeoutMs = 120000 } = {})
     await waitMs(700);
   }
   return latestStatus;
+}
+
+function contextSettingsForUi() {
+  return state.contextSettings || applyContextSettingsState(defaultContextSettings(), currentSessionIdForContextSettings());
+}
+
+function parseCompactCommandInput(text) {
+  const raw = String(text || "").trim();
+  if (!raw.toLowerCase().startsWith("/compact")) return null;
+  const args = raw.split(/\s+/).slice(1);
+  const parsed = {
+    reason: "manual_slash_compact",
+    timeout_ms: 15000,
+    simulate_timeout: false
+  };
+  for (const token of args) {
+    const lower = String(token || "").toLowerCase();
+    if (lower === "--simulate-timeout" || lower === "simulate-timeout") {
+      parsed.simulate_timeout = true;
+      continue;
+    }
+    if (lower.startsWith("--timeout=")) {
+      parsed.timeout_ms = parseBoundedInt(lower.slice("--timeout=".length), 15000, 1, 120000);
+      continue;
+    }
+    if (lower.startsWith("--reason=")) {
+      const reason = token.slice("--reason=".length).trim();
+      if (reason) parsed.reason = reason;
+    }
+  }
+  return parsed;
+}
+
+function currentRunIdForCompaction(session) {
+  const direct = String(session?.run_id || "").trim();
+  if (direct) return direct;
+  const fallback = String(state.run.id || "").trim();
+  return fallback || null;
+}
+
+async function triggerManualContextCompaction({
+  reason = "manual_ui_compact",
+  timeoutMs = 15000,
+  simulateTimeout = false,
+  source = "settings_button"
+} = {}) {
+  const sess = currentSession();
+  if (!(sess && typeof sess.id === "string") || String(sess.id).startsWith(DRAFT_SESSION_PREFIX)) {
+    throw new Error("persisted_session_required_for_compaction");
+  }
+  const runId = currentRunIdForCompaction(sess);
+  if (!runId) {
+    throw new Error("run_id_required_for_compaction");
+  }
+  const response = await api("/api/context/compact", {
+    method: "POST",
+    body: {
+      session_id: sess.id,
+      run_id: runId,
+      trigger_type: source === "slash_command" ? "manual_slash" : "manual_ui",
+      reason,
+      timeout_ms: parseBoundedInt(timeoutMs, 15000, 1, 120000),
+      simulate_timeout: simulateTimeout === true
+    }
+  });
+  if (response?.ok === false && String(response?.error || "") === "unsafe_boundary") {
+    toast(`Compact skipped: ${response?.blocking_phase || "unsafe_boundary"}`, "warn");
+  } else if (response?.ok === false) {
+    throw new Error(String(response?.reason || response?.error || "context_compaction_failed"));
+  } else {
+    toast("Context compaction requested", "ok");
+  }
+  await refreshContextSettingsForCurrentSession();
+  await refreshRun(runId);
+  await syncRunEventsFromBackend(sess.id, runId, { bootstrap: false });
+  return response;
+}
+
+async function maybeHandleSlashCompactCommand(promptText) {
+  const parsed = parseCompactCommandInput(promptText);
+  if (!parsed) return false;
+  await triggerManualContextCompaction({
+    reason: parsed.reason,
+    timeoutMs: parsed.timeout_ms,
+    simulateTimeout: parsed.simulate_timeout,
+    source: "slash_command"
+  });
+  state.pendingSend = null;
+  state.composer = "";
+  state.composerTokens = [];
+  closeComposerSuggest();
+  saveThreads();
+  render();
+  return true;
 }
 
 async function runRuntimeLane(pending, sess, detail, resolvedComposer = null) {
@@ -1956,15 +3747,7 @@ async function runRuntimeLane(pending, sess, detail, resolvedComposer = null) {
       state.attachments = [];
       closeComposerSuggest();
       const actionSummary = String(created?.host_action?.action || "host_action");
-      appendDisplayEvent(sess.id, DISPLAY_EVENT_TYPES.USER_MESSAGE, rawText || prompt, {
-        source: "composer_host_action_user",
-        lane: "chat"
-      });
-      appendDisplayEvent(sess.id, DISPLAY_EVENT_TYPES.ASSISTANT_REPLY, `Host action accepted: ${actionSummary}`, {
-        source: "composer_host_action_reply",
-        lane: "chat"
-      });
-      toast("Host action executed", "ok");
+      toast(`Host action executed: ${actionSummary}`, "ok");
       return;
     }
 
@@ -1987,26 +3770,29 @@ async function runRuntimeLane(pending, sess, detail, resolvedComposer = null) {
     state.composerTokens = [];
     state.attachments = [];
     closeComposerSuggest();
-
-    await syncRunEventsFromBackend(sess.id, runId, { bootstrap: true });
+    ensureSessionRunLink(sess.id, runId);
+    ensureRuntimeRunContainer(runId);
+    const streamStarted = startRuntimeEventStream(sess.id, runId);
+    if (!streamStarted) {
+      await syncRunEventsFromBackend(sess.id, runId, { bootstrap: true });
+    }
     const finalStatus = await waitForRunTerminal(sess.id, runId, { timeoutMs: 120000 });
     state.run.status = finalStatus;
     state.canResume = false;
+    closeRuntimeEventStream(runId);
+    await syncRunEventsFromBackend(sess.id, runId, { bootstrap: false });
 
-    if (state.autoCompact && detail.lane === "task" && !isRunActiveStatus(finalStatus)) {
-      const compactRes = await api(`/runs/${encodeURIComponent(runId)}/compact`, { method: "POST", body: { mode: "manual" } });
-      log("compact", compactRes);
-      await refreshRun(runId);
-      await syncRunEventsFromBackend(sess.id, runId, { bootstrap: false });
-    }
+    await refreshContextSettingsForCurrentSession();
   } catch (e) {
     state.run.status = "failed_controlled";
     state.canResume = true;
+    closeRuntimeEventStream(state.run.id);
     toast(String(e?.payload?.message || e?.payload?.error || e.message || e), "bad");
     log("turn_send_failed", e?.payload || { message: String(e?.message || e) });
   } finally {
     state.busy = false;
     state.stopRequested = false;
+    closeRuntimeEventStream(state.run.id);
     saveThreads();
     render();
   }
@@ -2058,24 +3844,13 @@ async function executeComposerHostAction(sess, resolvedComposer) {
     method: "POST",
     body
   });
-  const rawPrompt = normalizePrompt(state.composer || state.composerTokens.map((token) => token.label || "").join(" "));
-  if (rawPrompt) {
-    appendDisplayEvent(sess.id, DISPLAY_EVENT_TYPES.USER_MESSAGE, rawPrompt, {
-      source: "composer_host_action_user",
-      lane: "chat"
-    });
-  }
-  const targetText = hostAction.rel_path ? ` ${hostAction.rel_path}` : "";
-  appendDisplayEvent(sess.id, DISPLAY_EVENT_TYPES.ASSISTANT_REPLY, `Host action accepted: ${actionType}${targetText}`.trim(), {
-    source: "composer_host_action_reply",
-    lane: "chat"
-  });
   state.pendingSend = null;
   state.composer = "";
   state.composerTokens = [];
   state.attachments = [];
   closeComposerSuggest();
-  toast("Host action executed", "ok");
+  const targetText = hostAction.rel_path ? ` ${hostAction.rel_path}` : "";
+  toast(`Host action executed: ${actionType}${targetText}`.trim(), "ok");
   log("composer_host_action", { action: actionType, result });
   saveThreads();
   render();
@@ -2086,6 +3861,9 @@ async function runSendPipeline(pending) {
   restorePendingSendSnapshot();
   const tokenPrompt = state.composerTokens.map((token) => token.label || "").filter(Boolean).join(" ");
   const prompt = normalizePrompt(state.composer || tokenPrompt);
+  if (await maybeHandleSlashCompactCommand(prompt || state.composer)) {
+    return;
+  }
   if (!prompt && !state.attachments.length && state.composerTokens.length === 0) {
     state.pendingSend = null;
     return;
@@ -2229,6 +4007,49 @@ async function resumeFlow() {
   }
 }
 
+function toggleRuntimeCardExpandState(buttonEl, keyHint = "") {
+  const key = String(keyHint || buttonEl?.getAttribute("data-key") || "").trim();
+  let cardEl = buttonEl?.closest?.(".runtime-card") || null;
+  if (!cardEl && key) {
+    const allRuntimeCards = Array.from(appEl.querySelectorAll(".runtime-card[data-runtime-collapse-key]"));
+    cardEl = allRuntimeCards.find((node) => String(node.getAttribute("data-runtime-collapse-key") || "") === key) || null;
+  }
+  if (!cardEl) return;
+  const collapseKey = String(key || cardEl.getAttribute("data-runtime-collapse-key") || "").trim();
+  if (!collapseKey) return;
+  const threadEl = appEl.querySelector("#homeThread");
+  const beforeScrollTop = threadEl ? threadEl.scrollTop : 0;
+  if (threadEl) {
+    state.threadAnchor = "manual";
+    state.threadScrollPinnedByUser = true;
+  }
+  const currentlyCollapsed = cardEl.classList.contains("collapsed");
+  const nextCollapsed = !currentlyCollapsed;
+  state.runtimeCardCollapse[collapseKey] = nextCollapsed;
+  cardEl.classList.toggle("collapsed", nextCollapsed);
+  if (buttonEl) {
+    buttonEl.textContent = nextCollapsed ? "Expand" : "Collapse";
+    buttonEl.setAttribute("aria-expanded", nextCollapsed ? "false" : "true");
+  }
+  if (threadEl) {
+    const clampScrollTop = (value) => {
+      const maxScrollTop = Math.max(0, threadEl.scrollHeight - threadEl.clientHeight);
+      return Math.max(0, Math.min(maxScrollTop, value));
+    };
+    const restoreScrollTop = () => {
+      threadEl.scrollTop = clampScrollTop(beforeScrollTop);
+      const maxScrollTop = Math.max(0, threadEl.scrollHeight - threadEl.clientHeight);
+      pinThreadScrollByUser(threadEl.scrollTop, maxScrollTop);
+      state.threadAnchor = "manual";
+      state.threadScrollPinnedByUser = true;
+    };
+    restoreScrollTop();
+    requestAnimationFrame(() => {
+      restoreScrollTop();
+    });
+  }
+}
+
 document.addEventListener("click", async (e) => {
   const rb = e.target.closest("[data-route]");
   if (rb) {
@@ -2251,6 +4072,14 @@ document.addEventListener("click", async (e) => {
       if (Number.isFinite(idx) && idx >= 0 && idx < items.length) {
         applyComposerSuggestion(items[idx]);
       }
+      return;
+    }
+    if (action === "toggle-runtime-card") {
+      e.preventDefault();
+      e.stopPropagation();
+      const collapseKey = String(a.getAttribute("data-key") || a.getAttribute("data-id") || "").trim();
+      if (!collapseKey) return;
+      toggleRuntimeCardExpandState(a, collapseKey);
       return;
     }
     if (action === "send") return await triggerSendIntent("send_button");
@@ -2331,6 +4160,7 @@ document.addEventListener("click", async (e) => {
       thread(id);
       markThreadAnchorBottom(true);
       syncCurrentClassificationFromSession();
+      await refreshContextSettingsForCurrentSession();
       state.modal = null;
       saveThreads();
       route("/");
@@ -2362,9 +4192,11 @@ document.addEventListener("click", async (e) => {
     }
 
     if (action === "open-session") {
+      closeRuntimeEventStream();
       state.currentSessionId = a.getAttribute("data-id");
       markThreadAnchorBottom(true);
       syncCurrentClassificationFromSession();
+      await refreshContextSettingsForCurrentSession();
       const cs = currentSession();
       if (cs?.id) {
         await syncSessionTurnsFromBackend(cs.id, { bootstrap: true });
@@ -2378,9 +4210,11 @@ document.addEventListener("click", async (e) => {
     }
 
     if (action === "open-home-session") {
+      closeRuntimeEventStream();
       state.currentSessionId = a.getAttribute("data-id");
       markThreadAnchorBottom(true);
       syncCurrentClassificationFromSession();
+      await refreshContextSettingsForCurrentSession();
       const cs = currentSession();
       if (cs?.id) {
         await syncSessionTurnsFromBackend(cs.id, { bootstrap: true });
@@ -2505,6 +4339,39 @@ document.addEventListener("click", async (e) => {
       return;
     }
 
+    if (action === "save-context-settings") {
+      if (!hasPersistedCurrentSession()) {
+        throw new Error("persisted_session_required_for_context_settings");
+      }
+      const cfg = contextSettingsForUi();
+      await patchContextSettingsForCurrentSession(
+        {
+          auto_compact_after_task_lane: cfg.auto_compact_after_task_lane,
+          auto_compact_enabled: cfg.auto_compact_enabled,
+          event_threshold: cfg.event_threshold,
+          token_threshold: cfg.token_threshold,
+          stdout_stderr_threshold: cfg.stdout_stderr_threshold,
+          artifacts_threshold: cfg.artifacts_threshold,
+          repair_round_threshold: cfg.repair_round_threshold
+        },
+        "settings_save_button"
+      );
+      toast("Automation settings saved", "ok");
+      render();
+      return;
+    }
+
+    if (action === "manual-context-compact") {
+      await triggerManualContextCompaction({
+        reason: "manual_settings_button_compact",
+        timeoutMs: 15000,
+        simulateTimeout: false,
+        source: "settings_button"
+      });
+      render();
+      return;
+    }
+
     if (action === "insert-invalid") {
       state.byo.key = PLACEHOLDER_API_KEY;
       render();
@@ -2583,6 +4450,7 @@ window.addEventListener("popstate", () => {
   try {
     await refreshCore();
     syncCurrentClassificationFromSession();
+    await refreshContextSettingsForCurrentSession();
     const cs = currentSession();
     if (cs?.id) {
       await syncSessionTurnsFromBackend(cs.id, { bootstrap: true });
@@ -2601,15 +4469,24 @@ window.addEventListener("popstate", () => {
   setInterval(async () => {
     try {
       await Promise.all([refreshPreflight(), refreshAccessStatus(), refreshByoStatus()]);
+      await refreshContextSettingsForCurrentSession();
       const s = currentSession();
-      if (s?.id) {
+      const streamActive =
+        Boolean(state.runtimeStream?.source) &&
+        String(state.runtimeStream?.runId || "").trim().length > 0 &&
+        isRunActiveStatus(state.run.status);
+      if (s?.id && !streamActive) {
         await syncSessionTurnsFromBackend(s.id, { bootstrap: false });
         const refreshed = currentSession();
         if (refreshed?.run_id) {
           await refreshRun(refreshed.run_id);
         }
       }
-      render();
+      if (state.route === "/") {
+        render();
+      } else if (!refreshStatusBadgesOnly()) {
+        render();
+      }
     } catch {
       // no-op
     }

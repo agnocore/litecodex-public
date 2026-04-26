@@ -309,6 +309,20 @@ select {
   gap: 12px;
 }
 
+.thread > * {
+  flex: 0 0 auto;
+}
+
+.thread-collapsed-hint {
+  margin: 0 14px;
+  padding: 10px 12px;
+  border: 1px dashed #bfd0e3;
+  border-radius: 12px;
+  background: #f4f8fd;
+  display: grid;
+  gap: 8px;
+}
+
 .empty-thread {
   padding: 28px;
   border: 1px dashed #b8c6d7;
@@ -359,6 +373,316 @@ select {
 .card.deploy-summary,
 .card.assistant-reply {
   border-left: 4px solid #0b7a75;
+}
+
+.runtime-card {
+  border: 1px solid #d7e0ea;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.runtime-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #ebf1f8;
+}
+
+.runtime-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.runtime-card-meta {
+  margin-top: 3px;
+  color: #5b6b80;
+  font-size: 11px;
+}
+
+.runtime-card-body {
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.runtime-card.collapsed .runtime-card-body {
+  display: none;
+}
+
+.runtime-card.kind-user {
+  border-left: 4px solid #1f8d86;
+}
+
+.runtime-card.kind-assistant {
+  border-left: 4px solid #0b7a75;
+}
+
+.runtime-card.kind-command {
+  border-left: 4px solid #7d889a;
+}
+
+.runtime-card.kind-diff {
+  border-left: 4px solid #0c7f62;
+}
+
+.runtime-card.kind-verify {
+  border-left: 4px solid #3074b5;
+}
+
+.runtime-card.kind-review,
+.runtime-card.kind-acceptance {
+  border-left: 4px solid #6b5db6;
+}
+
+.runtime-card.kind-plan,
+.runtime-card.kind-verify-resolver {
+  border-left: 4px solid #3c7ea1;
+  background: #f7fbff;
+}
+
+.runtime-card.kind-file-locate {
+  border-left: 4px solid #2f6f9b;
+}
+
+.runtime-card.kind-diagnosis,
+.runtime-card.kind-repair-loop {
+  border-left: 4px solid #af6e20;
+  background: #fffaf2;
+}
+
+.runtime-card.kind-deploy-gate {
+  border-left: 4px solid #5c5eb8;
+  background: #f8f8ff;
+}
+
+.runtime-card.kind-approval {
+  border-left: 4px solid #b26a00;
+  background: #fffaf0;
+}
+
+.runtime-card.kind-failure {
+  border-left: 4px solid #c33f56;
+  background: #fff5f7;
+}
+
+.runtime-card.kind-context-compaction {
+  border-left: 4px solid #0b7a75;
+  background: #f2fbfa;
+}
+
+.runtime-card.kind-thinking {
+  border-left: 4px solid #9aa9ba;
+  background: linear-gradient(90deg, #fbfdff 0%, #f2f7fc 100%);
+}
+
+.thinking-body {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.thinking-label {
+  position: relative;
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #cfdbe8;
+  background: #eaf2fb;
+  color: #213850;
+  overflow: hidden;
+}
+
+.compaction-body {
+  display: grid;
+  gap: 8px;
+}
+
+.compaction-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid #8fcfc7;
+  background: #e8faf7;
+  color: #145750;
+  overflow: hidden;
+}
+
+.compaction-label.running::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+  background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.94) 48%, transparent 100%);
+  animation: contextCompactionSweep 1.25s linear infinite;
+}
+
+.compaction-label.completed {
+  border-color: #83c5bc;
+  background: #e6f9f4;
+}
+
+.compaction-label.failed,
+.compaction-label.skipped {
+  border-color: #efc2cb;
+  background: #fff4f7;
+  color: #8d2d42;
+}
+
+.thinking-label::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+  background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.92) 48%, transparent 100%);
+  animation: thinkingSweep 1.4s linear infinite;
+}
+
+@keyframes thinkingSweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(130%);
+  }
+}
+
+@keyframes contextCompactionSweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(130%);
+  }
+}
+
+.runtime-toggle-btn {
+  min-width: 76px;
+}
+
+.runtime-note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #2e435b;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.runtime-note code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.runtime-kv {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+  column-gap: 16px;
+  row-gap: 8px;
+  align-items: baseline;
+}
+
+.runtime-kv dt {
+  color: #5b6d83;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.runtime-kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.runtime-kv dd code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.runtime-streams {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.runtime-streams h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: #4f6580;
+}
+
+.runtime-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "Consolas", "Cascadia Mono", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  background: #f8fbff;
+  border: 1px solid #d8e3f0;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.diff-hunk {
+  border: 1px solid #d9e4f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.diff-hunk-head {
+  padding: 6px 8px;
+  background: #edf4fb;
+  border-bottom: 1px solid #d9e4f0;
+  font-size: 11px;
+  color: #48607a;
+  font-family: "Consolas", "Cascadia Mono", monospace;
+}
+
+.diff-line {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 8px;
+  padding: 2px 8px;
+  font-family: "Consolas", "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+
+.diff-line.plus {
+  background: #effcf5;
+}
+
+.diff-line.minus {
+  background: #fff4f5;
+}
+
+.diff-line span {
+  text-align: center;
+  color: #5f7390;
+}
+
+.diff-line.plus span {
+  color: #0d7a54;
+}
+
+.diff-line.minus span {
+  color: #bc3e4e;
+}
+
+.runtime-checks {
+  margin: 0;
+  padding-left: 18px;
+  color: #2b4058;
+  font-size: 12px;
 }
 
 .composer {
@@ -761,5 +1085,9 @@ select {
   .review-pane.collapsed .review-tabs,
   .review-pane.collapsed .review-content {
     display: block;
+  }
+
+  .runtime-streams {
+    grid-template-columns: 1fr;
   }
 }

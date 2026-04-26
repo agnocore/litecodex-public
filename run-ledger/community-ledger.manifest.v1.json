@@ -2,9 +2,9 @@
     "contract_version":  "2026-04-26.community-ledger-contract.v1",
     "contract_mode":  "community_bootstrap_plus_bundle",
     "bootstrap_file":  "init.sql",
-    "bootstrap_sha256":  "7f80f032eaf0063ca4db6c4e5e48cb81308831c9c7f1f0ffb61d7a395008029e",
+    "bootstrap_sha256":  "be8a60cc974f250f72c8ef599c7788aeafc641a887bf50338d593ca9fbaaaf85",
     "bundle_file":  "community-ledger.bundle.sql",
-    "bundle_sha256":  "95c3a0ce7a29896a9cc5270f9d7c8d5d7ec6c8ef9f84a6eee7eb1dab1d838b26",
+    "bundle_sha256":  "04134796aad4875163a0791d6491bd4ed5cb0c86606463c95c56cef2624292c4",
     "migrations":  [
                        {
                            "file":  "2026-04-foundation-closeout.sql",

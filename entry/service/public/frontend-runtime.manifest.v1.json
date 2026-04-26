@@ -1,0 +1,28 @@
+{
+  "manifest_version": "v1.entry-frontend-runtime",
+  "build_version": "2026-04-26.entry-frontend-runtime.v1",
+  "source_revision": "litecodex.local.entry.service.public",
+  "generated_at": "2026-04-26T00:27:11.510Z",
+  "entrypoint": {
+    "html": "index.html",
+    "script": "/app.js",
+    "style": "/styles.css",
+    "service": "entry/service/public"
+  },
+  "files": [
+    {
+      "path": "app.js",
+      "sha256": "47be3ee57fd5e974c786187693ad77317437d6ffd5a2c3289a31437ff2013f64",
+      "bytes": 180272
+    },
+    {
+      "path": "styles.css",
+      "sha256": "0be4fa4b50a11268aa6e4745ddbbc22a1c4bbb98a62b118df514836e9fbce820",
+      "bytes": 17641
+    }
+  ],
+  "notes": [
+    "Published from private canonical frontend artifacts.",
+    "Runtime artifacts only; no private provider implementation or secrets."
+  ]
+}

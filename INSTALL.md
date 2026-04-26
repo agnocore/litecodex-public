@@ -36,6 +36,7 @@ npm run entry:onekey
 ## 4) 分步模式（可选）
 ```powershell
 npm install
+npm run frontend:verify
 npm run ledger:install
 npm run entry:install
 npm run ledger:status
@@ -72,5 +73,6 @@ npm run entry:start
 npm run entry:stop
 npm run entry:restart
 npm run entry:open
+npm run frontend:verify
 npm run ledger:status
 ```
