@@ -2,7 +2,7 @@
   "manifest_version": "v1.agent-host-community-runtime",
   "build_version": "2026-04-26.agent-host-community-runtime.v1",
   "source_revision": "litecodex.local.agent-host.src",
-  "generated_at": "2026-04-26T01:35:43.501Z",
+  "generated_at": "2026-04-26T02:00:05.813Z",
   "host_entrypoint": {
     "script": "src/server.mjs",
     "bind": "127.0.0.1:4317",
@@ -16,8 +16,8 @@
     },
     {
       "path": "src/server.mjs",
-      "sha256": "a334d7c76e6b66655a5f0977725d29634cf6b8224b57044408d3c28d7dcd2030",
-      "bytes": 1900406
+      "sha256": "e06ac537a545a29200f355be550b2d8c1035f7e463dd50253c9bddea953251e9",
+      "bytes": 1900447
     },
     {
       "path": "src/foundation/boundary-guard.mjs",

@@ -459,7 +459,9 @@ function applyLedgerMigrations(db) {
     .sort((a, b) => a.localeCompare(b));
   const applied = [];
   for (const file of files) {
-    const done = db.prepare("SELECT 1 AS ok FROM schema_migrations WHERE filename = ? LIMIT 1").get(file);
+    const done = db
+      .prepare("SELECT 1 AS ok FROM schema_migrations WHERE filename IN (?, ?) LIMIT 1")
+      .get(file, `migration:${file}`);
     if (done) {
       continue;
     }
