@@ -4,3 +4,6 @@ entry/service/public/styles.css text eol=lf
 entry/service/public/frontend-runtime.manifest.v1.json text eol=lf
 scripts/verify-entry-frontend-runtime.mjs text eol=lf
 scripts/entry-onekey.mjs text eol=lf
+
+# Keep strict SQL checksum inputs stable in community installs.
+run-ledger/*.sql text eol=lf
