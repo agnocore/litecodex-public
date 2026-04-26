@@ -1,5 +1,5 @@
 {
-    "contract_version":  "2026-04-26.community-ledger-contract.v1",
+    "contract_version":  "2026-04-26.community-ledger-contract.v2",
     "contract_mode":  "community_bootstrap_plus_bundle",
     "bootstrap_file":  "init.sql",
     "bootstrap_sha256":  "be8a60cc974f250f72c8ef599c7788aeafc641a887bf50338d593ca9fbaaaf85",
@@ -13,6 +13,10 @@
                        {
                            "file":  "2026-04-agent-host-runtime-storage-hotfix.sql",
                            "sha256":  "6b7a675f0e53e493500ba41bbaf7b905b292835e181bd7d0ded5368daf0f6b89"
+                       },
+                       {
+                           "file":  "2026-04-agent-host-context-contract-hotfix.sql",
+                           "sha256":  "87d411b9a1ca5ba3fc40344d5a7de5040ae7f83c7d192788fae8d5d96ea3497a"
                        },
                        {
                            "file":  "2026-04-foundation-closeout.sql",
@@ -59,7 +63,11 @@
                             "compact_artifacts",
                             "compact_mappings",
                             "engineering_verify_runs",
-                            "android_verify_runs"
+                            "android_verify_runs",
+                            "autocontext_compilations",
+                            "context_snapshots",
+                            "context_compactions",
+                            "run_context_receipts"
                         ],
     "private_overlay_env":  "LITECODEX_LEDGER_PRIVATE_BUNDLE_SQL",
     "private_overlay_note":  "Optional signed private bundle applied after community contract for official advanced capability lanes."
