@@ -7,12 +7,20 @@
     "bundle_sha256":  "de4e78c055122fcee4c50d88bc3f0890c8744fd112971129d689ca9607384301",
     "migrations":  [
                        {
+                           "file":  "2026-04-agent-host-runtime-parity.sql",
+                           "sha256":  "91152c779ee6e9ad746f5a06dceae2d44c1c95700145d0a81a6703cf6c4ee53f"
+                       },
+                       {
+                           "file":  "2026-04-agent-host-runtime-storage-hotfix.sql",
+                           "sha256":  "6b7a675f0e53e493500ba41bbaf7b905b292835e181bd7d0ded5368daf0f6b89"
+                       },
+                       {
                            "file":  "2026-04-foundation-closeout.sql",
-                           "sha256":  "8272aa8bdd3f68ff1c3853fa255bf2d227320f05f6c78748b27a792539909497"
+                           "sha256":  "437dbfb4b129835f96ced10e8d9a47e76801d563c5a96f2194b0256360558181"
                        },
                        {
                            "file":  "2026-04-foundation-final-closeout.sql",
-                           "sha256":  "f8ce5afc2ed14459dab6e22bca9ad33001a3128c1cee87ea825ef01a10163fb3"
+                           "sha256":  "178b516e44e924b9501ffbc8e68dc061bef210f46d5925eacd9156ad5660166e"
                        }
                    ],
     "required_tables":  [
@@ -27,7 +35,31 @@
                             "entry_sessions",
                             "entry_session_turns",
                             "entry_project_recent_files",
-                            "entry_session_target_files"
+                            "entry_session_target_files",
+                            "verify_runs",
+                            "repair_decisions",
+                            "playwright_discoveries",
+                            "phase5b_readiness",
+                            "workspace_root_bindings",
+                            "task_storage_roots",
+                            "path_jail_checks",
+                            "deploy_runs",
+                            "deploy_retries",
+                            "online_verification_runs",
+                            "final_operational_readiness",
+                            "retrieval_decisions",
+                            "retrieval_hits",
+                            "retrieval_bundles",
+                            "retrieval_fetches",
+                            "retrieval_readiness",
+                            "retrieval_budget_checks",
+                            "retrieval_governance_readiness",
+                            "ledger_projections",
+                            "compact_runs",
+                            "compact_artifacts",
+                            "compact_mappings",
+                            "engineering_verify_runs",
+                            "android_verify_runs"
                         ],
     "private_overlay_env":  "LITECODEX_LEDGER_PRIVATE_BUNDLE_SQL",
     "private_overlay_note":  "Optional signed private bundle applied after community contract for official advanced capability lanes."

@@ -30,6 +30,16 @@ function sha256Buffer(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
+function checksumBufferForPath(filePath) {
+  const raw = fs.readFileSync(filePath);
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext !== ".sql") {
+    return raw;
+  }
+  const normalized = raw.toString("utf8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return Buffer.from(normalized, "utf8");
+}
+
 function readFileUtf8(filePath) {
   return fs.readFileSync(filePath, "utf8").replace(/^\uFEFF/, "");
 }
@@ -72,7 +82,7 @@ function verifyChecksumOrThrow(label, filePath, expectedSha256) {
   if (!expectedSha256) {
     return;
   }
-  const got = sha256Buffer(fs.readFileSync(filePath));
+  const got = sha256Buffer(checksumBufferForPath(filePath));
   if (got !== String(expectedSha256).toLowerCase()) {
     throw new Error(`${label}_checksum_mismatch:${got}`);
   }

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "agent-host:verify": "node scripts/verify-agent-host-runtime.mjs",
     "frontend:verify": "node scripts/verify-entry-frontend-runtime.mjs",
     "ledger:install": "node run-ledger/install.mjs --strict",
     "ledger:status": "node run-ledger/status.mjs",

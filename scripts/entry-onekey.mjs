@@ -8,10 +8,11 @@ const ENTRY_ORIGIN = "http://127.0.0.1:43985";
 const HOST_ORIGIN = "http://127.0.0.1:4317";
 const REPO_ROOT = process.cwd();
 const FRONTEND_MANIFEST = path.join(REPO_ROOT, "entry", "service", "public", "frontend-runtime.manifest.v1.json");
+const AGENT_HOST_DIR = path.join(REPO_ROOT, "agent-host");
 
-function runOrThrow(command, args) {
+function runOrThrow(command, args, options = {}) {
   const res = spawnSync(command, args, {
-    cwd: process.cwd(),
+    cwd: options.cwd || process.cwd(),
     stdio: "inherit",
     shell: false
   });
@@ -168,6 +169,16 @@ async function main() {
     runOrThrow("npm", ["install"]);
   }
 
+  if (!fs.existsSync(AGENT_HOST_DIR)) {
+    throw new Error(`agent_host_missing:${AGENT_HOST_DIR}`);
+  }
+  if (process.platform === "win32") {
+    runOrThrow("cmd.exe", ["/d", "/s", "/c", "npm install"], { cwd: AGENT_HOST_DIR });
+  } else {
+    runOrThrow("npm", ["install"], { cwd: AGENT_HOST_DIR });
+  }
+
+  runOrThrow(process.execPath, ["scripts/verify-agent-host-runtime.mjs"]);
   runOrThrow(process.execPath, ["scripts/verify-entry-frontend-runtime.mjs"]);
   runOrThrow(process.execPath, ["run-ledger/install.mjs", "--strict"]);
   runOrThrow(process.execPath, ["entry/cli.mjs", "entry", "install"]);

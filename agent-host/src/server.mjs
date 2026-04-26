@@ -22,6 +22,8 @@ const sharedDir = path.join(repoRoot, "shared");
 const ledgerDir = path.join(repoRoot, "run-ledger");
 const runsRoot = path.join(repoRoot, "runs");
 const workspacesRoot = path.join(repoRoot, "workspaces");
+const entryServicePublicDir = path.join(repoRoot, "entry", "service", "public");
+const entryPublicDir = path.join(repoRoot, "entry", "public");
 const phase3aFixtureRoot = path.join(workspacesRoot, "phase3a-fixture");
 const phase3bFixtureRoot = path.join(workspacesRoot, "phase3b-fixture");
 const phase3cFixtureRoot = path.join(workspacesRoot, "phase3c-fixture");
@@ -46,8 +48,27 @@ const taskToEngineeringFixtureRoot = path.join(workspacesRoot, "task-to-engineer
 const contractsRoot = path.join(repoRoot, "contracts");
 const repoSkillsRoot = path.join(repoRoot, ".agents", "skills");
 
+function resolveEntryFrontendRoot() {
+  const serviceEntry = path.join(entryServicePublicDir, "index.html");
+  if (fs.existsSync(serviceEntry)) {
+    return entryServicePublicDir;
+  }
+  const legacyEntry = path.join(entryPublicDir, "index.html");
+  if (fs.existsSync(legacyEntry)) {
+    return entryPublicDir;
+  }
+  return entryServicePublicDir;
+}
+
+const entryFrontendRoot = resolveEntryFrontendRoot();
+const entryFrontendSource = path.relative(repoRoot, entryFrontendRoot).replace(/\\/g, "/");
+
 const host = "127.0.0.1";
 const port = Number(process.env.LITE_CODEX_HOST_PORT || 4317);
+const disableAutoContextAssemble =
+  String(process.env.LITECODEX_DISABLE_AUTOCONTEXT || process.env.LITE_CODEX_DISABLE_AUTOCONTEXT || "0").trim() === "1";
+const disableAutoCompact =
+  String(process.env.LITECODEX_DISABLE_AUTO_COMPACT || process.env.LITE_CODEX_DISABLE_AUTO_COMPACT || "0").trim() === "1";
 
 const runtimeProfile = JSON.parse(fs.readFileSync(path.join(sharedDir, "runtime-profile.lite_8gb.json"), "utf8"));
 const recipeContract = JSON.parse(fs.readFileSync(path.join(sharedDir, "auth-recipe-registry.v1.json"), "utf8"));
@@ -387,18 +408,27 @@ const supabaseRecipeId = "supabase_token_input";
 const vercelExecutable = "vercel";
 const wranglerExecutable = "wrangler";
 
+const AUTH_STATUS_PENDING_USER_ACTION = "pending_user_action";
+const AUTH_STATUS_WAITING_USER = "waiting_user";
+const AUTH_CONFIRMATION_REQUIRED_ERROR_CODES = new Set([
+  "browser_confirmation_required",
+  "cli_confirmation_required",
+  "device_code_confirmation_required"
+]);
+
 const ACTIVE_AUTH_STATUSES = [
   "required",
   "mode_selected",
   "challenge_emitted",
   "challenge_presented",
-  "pending_user_action",
+  AUTH_STATUS_PENDING_USER_ACTION,
+  AUTH_STATUS_WAITING_USER,
   "user_submitted",
   "verifying",
   "failed"
 ];
 
-const SUBMITTABLE_AUTH_STATUSES = ["pending_user_action", "failed"];
+const SUBMITTABLE_AUTH_STATUSES = [AUTH_STATUS_PENDING_USER_ACTION, AUTH_STATUS_WAITING_USER, "failed"];
 
 const dbPath = path.join(ledgerDir, "ledger.sqlite");
 const schemaPath = path.join(ledgerDir, "init.sql");
@@ -651,10 +681,54 @@ const approvalPendingContextMemory = new Map();
 const promptAssemblyReceiptMemory = new Map();
 let approvalDecisionLock = false;
 const sseClients = new Set();
+function sseClientResponse(entry) {
+  if (!entry) return null;
+  if (entry && typeof entry.write === "function") {
+    return entry;
+  }
+  if (entry && entry.res && typeof entry.res.write === "function") {
+    return entry.res;
+  }
+  return null;
+}
+function sseClientRunId(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const raw = typeof entry.runId === "string" && entry.runId.trim() ? entry.runId.trim() : null;
+  return raw;
+}
 const compactInProgressRunIds = new Set();
+const contextCompactionSessionLocks = new Set();
+const pendingContextCompactionsByRun = new Map();
 let latestLedgerIntegrityReport = null;
 const projectIndexCache = new Map();
 const projectSymbolCache = new Map();
+
+const CONTEXT_SNAPSHOT_SCHEMA = "litecodex.context_snapshot.v1";
+const AUTOCONTEXT_SCHEMA = "litecodex.autocontext.v1";
+const CONTEXT_RECEIPT_SCHEMA = "litecodex.run_context_receipt.v1";
+const DEFAULT_CONTEXT_SETTING_SOURCE = "context_settings_default_v1";
+
+const COMPACTION_BLOCKING_PHASES = new Set([
+  "command.running",
+  "verify.running",
+  "patch.applying",
+  "file.write.running",
+  "repair.half_round",
+  "deploy.authorization.waiting",
+  "toolchain.install.running",
+  "run.canceling",
+  "timeout.handling"
+]);
+
+const DANGEROUS_ACTION_PATTERNS = [
+  /\bdeploy\b/i,
+  /\bdelete\b/i,
+  /\brm\s+-rf\b/i,
+  /\binstall\b/i,
+  /\bgit\s+push\b/i,
+  /\bterraform\s+apply\b/i,
+  /\bkubectl\s+apply\b/i
+];
 
 const PROJECT_SEARCH_IGNORED_DIRS = new Set([
   ".git",
@@ -675,6 +749,15 @@ const PROJECT_SEARCH_IGNORED_DIRS = new Set([
 const PROJECT_INDEX_CACHE_TTL_MS = 8000;
 const PROJECT_INDEX_MAX_FILES = Number.parseInt(process.env.LITECODEX_PROJECT_INDEX_MAX_FILES || "12000", 10);
 const PROJECT_INDEX_MAX_DIRS = Number.parseInt(process.env.LITECODEX_PROJECT_INDEX_MAX_DIRS || "3000", 10);
+const PROJECT_EXTENSION_CORRECTIONS = {
+  mjs: ["js", "ts"],
+  cjs: ["js"],
+  jsx: ["tsx", "js"],
+  tsx: ["ts", "js"],
+  ts: ["js"],
+  yml: ["yaml"],
+  yaml: ["yml"]
+};
 
 const COMPOSER_COMMAND_CATALOG = [
   {
@@ -888,13 +971,38 @@ function classifyDisplayEventType(eventType) {
   if (!type) {
     return null;
   }
+  if (
+    type.startsWith("bootstrap.") ||
+    type.startsWith("restore.") ||
+    type.startsWith("reconnect.") ||
+    type.startsWith("context.") ||
+    type.startsWith("compact.") ||
+    type.startsWith("autocontext.") ||
+    type.startsWith("replay.") ||
+    type.startsWith("resume.") ||
+    type.startsWith("planner.") ||
+    type.startsWith("executor.") ||
+    type.startsWith("adapter.") ||
+    type === "workspace.root.bound" ||
+    type === "task.storage.created" ||
+    type === "path.jail.checked" ||
+    type === "workspace.opened"
+  ) {
+    return null;
+  }
   if (type === "user.message" || type.startsWith("user.message")) {
     return DISPLAY_EVENT_TYPES.USER_MESSAGE;
   }
   if (type === "attachment.ingested") {
     return DISPLAY_EVENT_TYPES.ATTACHMENT_ADDED;
   }
-  if (type === "auth.required" || type.startsWith("approval.pending")) {
+  if (
+    type === "auth.required" ||
+    type === "auth.waiting_user" ||
+    type === "auth.pending_user_action" ||
+    type === "auth.dialog_closed_unconfirmed" ||
+    type.startsWith("approval.pending")
+  ) {
     return DISPLAY_EVENT_TYPES.AUTH_REQUIRED;
   }
   if (type.startsWith("verify.") || type.includes(".verify.")) {
@@ -907,8 +1015,6 @@ function classifyDisplayEventType(eventType) {
     type === "step.failed" ||
     type === "step.failed_controlled" ||
     type.startsWith("recovery.") ||
-    type.startsWith("resume.") ||
-    type.startsWith("replay.") ||
     type.startsWith("retry.") ||
     type.startsWith("stale.running.recover")
   ) {
@@ -932,8 +1038,20 @@ function buildDisplayBodyFromRuntimeEvent(eventType, payload) {
   if (type === "auth.submit.duplicate_ignored") {
     return "Authorization already submitted. Waiting for verification.";
   }
+  if (type === "auth.waiting_user" || type === "auth.pending_user_action") {
+    return "Authorization is waiting for user confirmation.";
+  }
+  if (type === "auth.callback_detected") {
+    return "Authorization callback detected. Verifying now.";
+  }
+  if (type === "auth.dialog_closed_unconfirmed") {
+    return "Authorization dialog closed or unconfirmed. Retry is available.";
+  }
   if (type === "auth.verified" || type === "approval.continue.started") {
     return "Authorization verified. Execution resumed.";
+  }
+  if (type === "auth.resumed_original_run") {
+    return "Authorization verified. Resumed original run.";
   }
   if (type === "attachment.ingested") {
     const name = readPayloadText(p, ["original_name", "source_type", "mime_type", "attachment_id"]);
@@ -943,26 +1061,10 @@ function buildDisplayBodyFromRuntimeEvent(eventType, payload) {
     }
     return name ? `Attachment added to current context (${name})` : "Attachment added to current context";
   }
-  if (type === "context.hydration.started") {
-    return "Context restored from previous session";
-  }
-  if (type === "context.hydration.completed") {
-    const mode = String(p.hydrate_mode || "").toLowerCase();
-    if (mode.includes("compact")) {
-      return "Current turn uses summarized context";
-    }
-    return "Context restored from previous session";
-  }
-  if (type === "context.projection.built" || type === "context.projection.verified") {
-    return "Context restored from previous session";
-  }
-  if (type === "compact.requested" || type === "compact.started") {
-    return "Compacting long conversation context";
-  }
-  if (type === "compact.completed" || type === "fork.compact.completed") {
-    return "Long conversation compacted automatically";
-  }
   if (type === "step.requested") {
+    if (String(p.lane || "").toLowerCase() === "chat") {
+      return "";
+    }
     const stepId = readPayloadText(p, ["step_id", "task_type", "case_id"]);
     return stepId ? `Task started: ${stepId}` : "Task started";
   }
@@ -995,10 +1097,6 @@ function buildDisplayBodyFromRuntimeEvent(eventType, payload) {
   ) {
     const summary = readPayloadText(p, ["summary", "message", "reason", "status"]);
     return summary ? `Recovery update: ${summary}` : "Recovery update available";
-  }
-  if (type.startsWith("context.") || type.startsWith("compact.") || type.startsWith("autocontext.")) {
-    const summary = readPayloadText(p, ["summary", "message", "status", "hydrate_mode"]);
-    return summary || "Current turn uses summarized context";
   }
   return readPayloadText(p);
 }
@@ -4252,6 +4350,7 @@ function runLocalCommand(command, args, timeoutMs = 12000, options = {}) {
     cwd = path.resolve(cwd);
   }
   const shellMode = typeof options?.shell === "boolean" ? options.shell : process.platform === "win32";
+  const startedMs = Date.now();
   const result = spawnSync(command, args, {
     cwd,
     env,
@@ -4260,6 +4359,13 @@ function runLocalCommand(command, args, timeoutMs = 12000, options = {}) {
     shell: shellMode,
     timeout: parsePositiveInt(timeoutMs, 12000)
   });
+  const durationMs = Math.max(0, Date.now() - startedMs);
+  const shellLabel =
+    typeof options?.shell_label === "string" && options.shell_label.trim()
+      ? options.shell_label.trim()
+      : shellMode
+        ? inferHostShellType()
+        : "direct_exec";
 
   const stdout = redactWithSecrets(redactSensitiveText(result.stdout || ""), secretValues);
   const stderr = redactWithSecrets(redactSensitiveText(result.stderr || ""), secretValues);
@@ -4268,6 +4374,8 @@ function runLocalCommand(command, args, timeoutMs = 12000, options = {}) {
     status: result.status,
     signal: result.signal || null,
     cwd,
+    shell: shellLabel,
+    duration_ms: durationMs,
     stdout,
     stderr,
     error_message: result.error
@@ -4513,8 +4621,10 @@ function runVercelVerifierProbe() {
 }
 
 function safeParseJson(text) {
+  const raw = String(text ?? "");
+  const normalized = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
   try {
-    return JSON.parse(text);
+    return JSON.parse(normalized);
   } catch {
     return null;
   }
@@ -4693,6 +4803,43 @@ function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Browser-Profile-Id");
+}
+
+const ENTRY_FRONTEND_CONTENT_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8"
+};
+
+function tryServeEntryFrontendAsset(req, res, pathname) {
+  if (req.method !== "GET") {
+    return false;
+  }
+  const normalizedPath = String(pathname || "/");
+  const relPath =
+    normalizedPath === "/" ? "index.html" : normalizedPath.startsWith("/") ? normalizedPath.slice(1) : normalizedPath;
+  const allowlist = new Set(["index.html", "app.js", "styles.css", "lane.js", "projection.js"]);
+  if (!allowlist.has(relPath)) {
+    return false;
+  }
+  const absPath = path.join(entryFrontendRoot, relPath);
+  if (!absPath.startsWith(entryFrontendRoot)) {
+    return false;
+  }
+  if (!fs.existsSync(absPath) || !fs.statSync(absPath).isFile()) {
+    return false;
+  }
+  const ext = path.extname(absPath).toLowerCase();
+  const contentType = ENTRY_FRONTEND_CONTENT_TYPES[ext] || "application/octet-stream";
+  setCorsHeaders(res);
+  res.writeHead(200, {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store",
+    "X-Entry-Frontend-Source": entryFrontendSource
+  });
+  res.end(fs.readFileSync(absPath));
+  return true;
 }
 
 function sendJson(res, status, body) {
@@ -5225,6 +5372,20 @@ function isConfidentDirectTarget(target) {
   return confidence >= 0.78;
 }
 
+function isSpecificFileHintQuery(query) {
+  const q = normalizeSearchPathQuery(query);
+  if (!q) {
+    return false;
+  }
+  if (/[\\/]/.test(q) || q.includes(".")) {
+    return true;
+  }
+  if (/(?:^|[-_])(js|mjs|cjs|ts|tsx|jsx|py|go|rs|java|kt|swift|css|scss|html|json|yaml|yml|sql)$/i.test(q)) {
+    return true;
+  }
+  return false;
+}
+
 function resolveEntryProjectContext({ projectId = null, threadId = null, fallbackWorkspacePath = null } = {}) {
   let session = null;
   if (typeof threadId === "string" && threadId.trim()) {
@@ -5479,6 +5640,10 @@ function buildSearchQueryVariants(query) {
   const q = normalizeSearchPathQuery(query);
   const out = new Set();
   if (q) {
+    const stem = q.replace(/\.[a-z0-9]{1,8}$/i, "").replace(/[-_][a-z0-9]{1,8}$/i, "");
+    if (stem && stem !== q) {
+      out.add(stem);
+    }
     out.add(q);
     out.add(q.replace(/\\/g, "/"));
     out.add(q.replace(/\s+/g, ""));
@@ -5491,6 +5656,15 @@ function buildSearchQueryVariants(query) {
     const dashedFix = q.replace(/\.([a-z0-9]{1,6})$/i, "-$1");
     if (dashedFix !== q) {
       out.add(dashedFix);
+    }
+    const extMatch = q.match(/(?:\.|-)([a-z0-9]{1,8})$/i);
+    if (extMatch) {
+      const ext = String(extMatch[1] || "").toLowerCase();
+      const aliases = Array.isArray(PROJECT_EXTENSION_CORRECTIONS[ext]) ? PROJECT_EXTENSION_CORRECTIONS[ext] : [];
+      const base = q.replace(new RegExp(`(?:\\.|-)${ext}$`, "i"), "");
+      for (const aliasExt of aliases) {
+        out.add(`${base}.${aliasExt}`);
+      }
     }
   }
   return Array.from(out)
@@ -5513,12 +5687,70 @@ function parseSymbolQuery(rawQuery) {
   };
 }
 
+function normalizeSearchStem(value) {
+  const raw = normalizeSearchPathQuery(value || "");
+  if (!raw) {
+    return "";
+  }
+  return path
+    .basename(raw)
+    .toLowerCase()
+    .replace(/\.[a-z0-9]{1,8}$/i, "")
+    .replace(/[-_][a-z0-9]{1,8}$/i, "")
+    .trim();
+}
+
+function boundedLevenshteinDistance(a, b, maxDistance = 3) {
+  const left = String(a || "");
+  const right = String(b || "");
+  if (!left || !right) {
+    return null;
+  }
+  if (left === right) {
+    return 0;
+  }
+  const lengthGap = Math.abs(left.length - right.length);
+  if (lengthGap > maxDistance) {
+    return null;
+  }
+  const prev = new Array(right.length + 1);
+  const curr = new Array(right.length + 1);
+  for (let j = 0; j <= right.length; j += 1) {
+    prev[j] = j;
+  }
+  for (let i = 1; i <= left.length; i += 1) {
+    curr[0] = i;
+    let rowMin = curr[0];
+    for (let j = 1; j <= right.length; j += 1) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      const next = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + cost
+      );
+      curr[j] = next;
+      if (next < rowMin) {
+        rowMin = next;
+      }
+    }
+    if (rowMin > maxDistance) {
+      return null;
+    }
+    for (let j = 0; j <= right.length; j += 1) {
+      prev[j] = curr[j];
+    }
+  }
+  return prev[right.length] <= maxDistance ? prev[right.length] : null;
+}
+
 function scoreProjectIndexEntry(entry, context = {}) {
   const query = String(context.query || "").toLowerCase();
+  const queryStem = String(context.query_stem || "").toLowerCase();
   const variants = Array.isArray(context.variants) ? context.variants : [];
   const tokens = Array.isArray(context.tokens) ? context.tokens : [];
   const relLower = String(entry.rel_lower || "").toLowerCase();
   const basenameLower = String(entry.basename_lower || "").toLowerCase();
+  const basenameStem = basenameLower.replace(/\.[a-z0-9]{1,8}$/i, "");
   const reasons = [];
   let score = 0;
 
@@ -5537,6 +5769,7 @@ function scoreProjectIndexEntry(entry, context = {}) {
       continue;
     }
     const variantBasename = path.basename(variant);
+    const variantStem = String(variantBasename || "").toLowerCase().replace(/\.[a-z0-9]{1,8}$/i, "");
     if (relLower === variant) {
       score = Math.max(score, 1);
       reasons.push("exact_rel_path");
@@ -5548,6 +5781,12 @@ function scoreProjectIndexEntry(entry, context = {}) {
       if (variant !== query) {
         reasons.push("extension_corrected");
       }
+      continue;
+    }
+    if (variantStem && basenameStem === variantStem) {
+      score = Math.max(score, 0.88);
+      reasons.push("basename_stem_match");
+      reasons.push("extension_corrected");
       continue;
     }
     if (relLower.endsWith(`/${variant}`)) {
@@ -5563,6 +5802,20 @@ function scoreProjectIndexEntry(entry, context = {}) {
     if (basenameLower.includes(variantBasename)) {
       score = Math.max(score, 0.72);
       reasons.push("fuzzy_basename_match");
+    }
+  }
+
+  if (queryStem && basenameStem && queryStem.length >= 4 && basenameStem.length >= 4 && queryStem !== basenameStem) {
+    const maxLength = Math.max(queryStem.length, basenameStem.length);
+    const maxDistance = Math.max(2, Math.floor(maxLength * 0.34));
+    const distance = boundedLevenshteinDistance(queryStem, basenameStem, maxDistance);
+    if (distance !== null) {
+      const similarity = 1 - distance / maxLength;
+      if (similarity >= 0.72) {
+        const typoScore = Math.min(0.9, 0.79 + (similarity - 0.72) * 0.45);
+        score = Math.max(score, typoScore);
+        reasons.push("typo_basename_match");
+      }
     }
   }
 
@@ -5674,11 +5927,12 @@ function searchProjectFiles({
   const parsedSymbol = parseSymbolQuery(query);
   const queryText = parsedSymbol.path_query || normalizeSearchPathQuery(query);
   const variants = buildSearchQueryVariants(queryText).map((x) => x.toLowerCase());
+  const ignoredTokenSet = new Set(["js", "mjs", "cjs", "ts", "tsx", "jsx", "py", "json", "md", "txt", "html", "css", "yml", "yaml"]);
   const tokenParts = queryText
     .toLowerCase()
     .split(/[\\/._\- ]+/)
     .map((part) => part.trim())
-    .filter((part) => part.length >= 2);
+    .filter((part) => part.length >= 3 && !ignoredTokenSet.has(part));
 
   const sessionHints = listEntrySessionTargetFiles(sessionId, 60);
   const projectHints = listEntryProjectRecentFiles(project.id, 60);
@@ -5686,6 +5940,7 @@ function searchProjectFiles({
   const projectHintSet = new Set(projectHints.map((row) => String(row.rel_path || "")));
   const queryContext = {
     query: queryText.toLowerCase(),
+    query_stem: normalizeSearchStem(queryText),
     variants,
     tokens: tokenParts,
     session_hint_set: sessionHintSet,
@@ -6043,6 +6298,7 @@ function resolveComposerRequest({ threadId = null, projectId = null, rawText = "
   queryCandidates.push(...mentionQueries);
   queryCandidates.push(...tokenTargetCandidates);
   const uniqueQueryCandidates = Array.from(new Set(queryCandidates.map((x) => normalizeSearchPathQuery(x)).filter(Boolean))).slice(0, 6);
+  const queryHitSet = new Set();
 
   const resolvedTargets = [];
   for (const tokenRel of tokenTargetCandidates) {
@@ -6071,6 +6327,7 @@ function resolveComposerRequest({ threadId = null, projectId = null, rawText = "
     if (!Array.isArray(lookedUp.candidates) || lookedUp.candidates.length === 0) {
       continue;
     }
+    queryHitSet.add(candidateQuery);
     const top = lookedUp.candidates[0];
     if (!top?.rel_path) {
       continue;
@@ -6116,7 +6373,35 @@ function resolveComposerRequest({ threadId = null, projectId = null, rawText = "
         project_id: project.id
       };
     } else {
-      const target = resolvedTargets.find((item) => item.rel_path && isConfidentDirectTarget(item)) || null;
+      const unresolvedSpecificQueries = uniqueQueryCandidates.filter(
+        (query) => isSpecificFileHintQuery(query) && !queryHitSet.has(query)
+      );
+      if (unresolvedSpecificQueries.length > 0) {
+        result.needsClarification = {
+          required: true,
+          reason: "target_not_found_in_project",
+          message: `No matching file was found in project root ${project.root_path}. Copy the file into this project and retry.`,
+          target_query: unresolvedSpecificQueries[0]
+        };
+        result.hostAction = null;
+        return result;
+      }
+      const confidentTarget = resolvedTargets.find((item) => item.rel_path && isConfidentDirectTarget(item)) || null;
+      let target = confidentTarget;
+      if (!target && resolvedTargets.length > 0) {
+        const ranked = [...resolvedTargets].sort((a, b) => Number(b.confidence || 0) - Number(a.confidence || 0));
+        const top = ranked[0];
+        const second = ranked[1];
+        const topConfidence = Number(top?.confidence || 0);
+        const secondConfidence = Number(second?.confidence || 0);
+        const confidenceGap = topConfidence - secondConfidence;
+        if (top?.rel_path && topConfidence >= 0.72 && (ranked.length === 1 || confidenceGap >= 0.14)) {
+          target = top;
+        }
+      }
+      if (target && intent.host_action === "open-file" && String(target.type || "") !== "file") {
+        target = null;
+      }
       if (!target) {
         result.needsClarification = {
           required: true,
@@ -6428,25 +6713,102 @@ function buildEntryTurnUserMessage(promptText, attachmentSpecs = []) {
   return `${base}\nAttachments: ${names.join(", ")}`;
 }
 
-function buildEntryTurnChatReply({ promptText, runId, workspacePath, turnIndex, resolver = null }) {
+function extractEntryTurnTargetFiles(resolvedTargets) {
+  const out = [];
+  const seen = new Set();
+  for (const item of normalizeResolvedTargetsForTurn(resolvedTargets || [])) {
+    const rel = normalizeRelativeFilePath(item.rel_path || "");
+    if (!rel || seen.has(rel)) {
+      continue;
+    }
+    seen.add(rel);
+    if (item.type === "directory") {
+      continue;
+    }
+    out.push(rel);
+  }
+  return out.slice(0, 16);
+}
+
+function normalizeEntryTurnChatReply(text) {
+  const clean = sanitizeDisplayEventBody(text || "");
+  return clean || "I could not produce a valid response for this turn.";
+}
+
+async function generateEntryTurnChatReply({
+  runId,
+  stepId,
+  sessionId,
+  turnId,
+  turnIndex,
+  promptText,
+  workspacePath,
+  resolver
+}) {
   const prompt = String(promptText || "").trim();
+  const normalizedTargets = normalizeResolvedTargetsForTurn(resolver?.resolvedTargets || resolver?.resolved_targets || []);
+  const intentId = summarizeText(String(resolver?.intent?.id || ""), 120) || "chat.generic";
   const workspaceLabel = workspacePath ? path.basename(workspacePath) || workspacePath : "workspace";
-  if (/^(hi|hello|hey|你好|您好|嗨|哈喽)[!！,.，。?？ ]*$/i.test(prompt)) {
-    return `Hi，runtime 已接通。run=${runId}，workspace=${workspaceLabel}。`;
+  const targetPreview = normalizedTargets
+    .slice(0, 8)
+    .map((item) => (item.symbol ? `${item.rel_path}#${item.symbol}` : item.rel_path))
+    .join(", ");
+  const modelResult = await callOpenAiJsonObject({
+    systemPrompt:
+      "You are lite-codex local agent runtime for chat turns. Reply in the user's language with concise and actionable content. " +
+      "If file path is not found in current project, tell user to copy file into project root first. " +
+      "Return strict JSON object with key reply.",
+    userPrompt: [
+      `run_id: ${runId}`,
+      `step_id: ${stepId}`,
+      `session_id: ${sessionId || "unknown"}`,
+      `turn_id: ${turnId || "unknown"}`,
+      `turn_index: ${Number.isFinite(Number(turnIndex)) ? Number(turnIndex) : 0}`,
+      `workspace: ${workspaceLabel}`,
+      `intent: ${intentId}`,
+      `resolved_targets: ${targetPreview || "none"}`,
+      `user_input: ${prompt || "(empty)"}`
+    ].join("\n"),
+    maxTokens: 900,
+    temperature: 0.2,
+    runId,
+    promptPhase: "entry_chat_turn",
+    promptContext: {
+      step_id: stepId,
+      session_id: sessionId || null,
+      turn_id: turnId || null,
+      turn_index: Number.isFinite(Number(turnIndex)) ? Number(turnIndex) : 0,
+      intent_id: intentId,
+      resolved_target_count: normalizedTargets.length
+    }
+  });
+
+  const rawReply =
+    (modelResult.ok ? modelResult?.json?.reply : null) ||
+    (modelResult.ok ? modelResult?.json?.message : null) ||
+    modelResult.text ||
+    "";
+  const reply = normalizeEntryTurnChatReply(rawReply);
+  if (!modelResult.ok) {
+    return {
+      ok: false,
+      reply,
+      error: modelResult.error || "entry_chat_model_failed",
+      failure_layer: modelResult.failure_layer || null,
+      usage: modelResult.usage || null,
+      latency_ms: Number(modelResult.latency_ms || 0),
+      provider_id: modelResult.provider_id || null,
+      model: modelResult.model || null
+    };
   }
-  if (/^ops$/i.test(prompt)) {
-    return `ops: runtime=online, run=${runId}, turn=${Number.isFinite(Number(turnIndex)) ? Number(turnIndex) : 0}, workspace=${workspaceLabel}`;
-  }
-  const resolvedTargets = normalizeResolvedTargetsForTurn(resolver?.resolvedTargets || resolver?.resolved_targets || []);
-  if (resolvedTargets.length > 0) {
-    const preview = resolvedTargets
-      .slice(0, 4)
-      .map((item) => item.symbol ? `${item.rel_path}#${item.symbol}` : item.rel_path)
-      .join(", ");
-    return `已识别目标文件：${preview}\nrun=${runId}\nworkspace=${workspaceLabel}`;
-  }
-  const preview = summarizeText(prompt || "(empty_prompt)", 220);
-  return `已通过 runtime 执行本轮请求：${preview}\nrun=${runId}\nworkspace=${workspaceLabel}`;
+  return {
+    ok: true,
+    reply,
+    usage: modelResult.usage || null,
+    latency_ms: Number(modelResult.latency_ms || 0),
+    provider_id: modelResult.provider_id || null,
+    model: modelResult.model || null
+  };
 }
 
 function buildEntryTurnTaskCommandPlan(promptText, options = {}) {
@@ -6493,9 +6855,1707 @@ function buildEntryTurnTaskCommandPlan(promptText, options = {}) {
     };
   }
   return {
-    command: "node",
-    args: ["-e", "console.log('entry task runtime executed')"],
-    summary: "runtime_heartbeat"
+    command: "",
+    args: [],
+    summary: "task_action_not_resolved"
+  };
+}
+
+function shouldUseEntryModelTaskExecutor({ promptText, resolver, resolvedTargets }) {
+  const prompt = String(promptText || "").toLowerCase();
+  const taskType = String(resolver?.taskAction?.type || "").toLowerCase();
+  const targets = normalizeResolvedTargetsForTurn(resolvedTargets || resolver?.resolvedTargets || resolver?.resolved_targets || []);
+  if (targets.length === 0) {
+    return false;
+  }
+  if (taskType.includes("targeted_patch") || taskType.includes("targeted_existing_file")) {
+    return true;
+  }
+  if (taskType.includes("search-file")) {
+    return false;
+  }
+  if (/(修复|修改|patch|update|更新|对齐|align|同步|implement|实现|refactor|重构)/i.test(prompt)) {
+    return true;
+  }
+  return false;
+}
+
+function inferPromptExpectation(promptText) {
+  const prompt = String(promptText || "").trim();
+  if (!prompt) {
+    return null;
+  }
+  const lower = prompt.toLowerCase();
+  if (/\ba\s*\*\s*b\b/.test(lower)) {
+    return {
+      label: "contains a * b",
+      regex: /\ba\s*\*\s*b\b/m
+    };
+  }
+  if (/\ba\s*\+\s*b\b/.test(lower)) {
+    return {
+      label: "contains a + b",
+      regex: /\ba\s*\+\s*b\b/m
+    };
+  }
+  const literalMatch = prompt.match(/["'`](.{2,120})["'`]/);
+  if (literalMatch && literalMatch[1]) {
+    const needle = literalMatch[1].trim();
+    if (needle.length >= 2) {
+      return {
+        label: `contains literal "${needle}"`,
+        regex: new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "m")
+      };
+    }
+  }
+  return null;
+}
+
+function buildTaskAcceptanceSummary({
+  promptText,
+  targetFiles,
+  touchedFiles,
+  verifyResult,
+  verificationPlan,
+  checks
+}) {
+  const touched = Array.isArray(touchedFiles) ? touchedFiles : [];
+  const targets = Array.isArray(targetFiles) ? targetFiles : [];
+  const verifyCommands = Array.isArray(verificationPlan?.commands) ? verificationPlan.commands : [];
+  const passCount = Array.isArray(checks) ? checks.filter((x) => x && x.passed === true).length : 0;
+  const totalCount = Array.isArray(checks) ? checks.length : 0;
+  return [
+    touched.length > 0 ? `Updated files: ${touched.slice(0, 12).join(", ")}` : "No file changes were needed.",
+    verifyCommands.length > 0
+      ? `Verification: ${verifyCommands.slice(0, 6).join(" ; ")}`
+      : "Verification: skipped (no runnable verifier discovered).",
+    `Acceptance checks: ${passCount}/${totalCount} passed.`,
+    `Target files: ${targets.slice(0, 12).join(", ") || "none"}.`,
+    `Prompt: ${summarizeText(promptText, 220) || ""}`,
+    verifyResult?.passed ? "Verify result: passed." : `Verify result: failed (${summarizeText(verifyResult?.failure_summary || "", 200) || "unknown"}).`
+  ].join("\n");
+}
+
+function runEntryTaskAcceptanceExecutor({
+  runId,
+  stepId,
+  sessionId,
+  turnId,
+  turnIndex,
+  promptText,
+  workspacePath,
+  targetFiles,
+  touchedFiles,
+  verifyResult,
+  verificationPlan
+}) {
+  emitEvent(runId, "acceptance.started", {
+    step_id: stepId,
+    session_id: sessionId,
+    turn_id: turnId,
+    turn_index: turnIndex,
+    lane: "task",
+    status: "running"
+  });
+  const checks = [];
+  const targets = Array.isArray(targetFiles) ? targetFiles : [];
+  const touched = Array.isArray(touchedFiles) ? touchedFiles : [];
+  const verifyPassed = Boolean(verifyResult?.passed);
+  const verifyCommands = Array.isArray(verificationPlan?.commands) ? verificationPlan.commands : [];
+  const selectedCommand = verifyCommands[0] || null;
+  const coverageBase = verificationCoverageSummaryFromCommand(selectedCommand, targets);
+  const verifyFirstIntent = /(repair|verify|test(s)?\s*pass|until\s*pass|auto\s*repair|自动修复|通过测试)/i.test(
+    String(promptText || "")
+  );
+
+  const targetExists = targets.every((rel) => {
+    const normalized = normalizeRelativeFilePath(rel);
+    if (!normalized) return false;
+    return fs.existsSync(workspaceAbsolutePath(workspacePath, normalized));
+  });
+  checks.push({
+    check: "target_files_exist",
+    passed: targetExists,
+    details: targets
+  });
+
+  checks.push({
+    check: "verify_passed",
+    passed: verifyPassed,
+    details: summarizeText(verifyResult?.failure_summary || "passed", 220) || null
+  });
+
+  const expectation = inferPromptExpectation(promptText);
+  let expectationMatched = false;
+  if (expectation && targets.length > 0) {
+    for (const rel of targets) {
+      const normalized = normalizeRelativeFilePath(rel);
+      if (!normalized) continue;
+      const abs = workspaceAbsolutePath(workspacePath, normalized);
+      if (!fs.existsSync(abs)) continue;
+      let text = "";
+      try {
+        text = fs.readFileSync(abs, "utf8");
+      } catch {
+        text = "";
+      }
+      if (expectation.regex.test(text)) {
+        expectationMatched = true;
+        break;
+      }
+    }
+  }
+  const verifyCoverageSufficient =
+    verifyPassed &&
+    (coverageBase.coverage === "behavioral" ||
+      (coverageBase.coverage === "partial" && (!expectation || expectationMatched)) ||
+      (coverageBase.coverage === "syntax" && expectationMatched));
+  const relaxByVerify = verifyPassed && verifyFirstIntent && verifyCoverageSufficient;
+  checks.push({
+    check: "verify_coverage_sufficient",
+    passed: verifyCoverageSufficient,
+    details: {
+      verify_coverage: coverageBase.coverage,
+      coverage_reason: coverageBase.reason,
+      selected_command: selectedCommand
+    }
+  });
+  if (expectation && targets.length > 0) {
+    checks.push({
+      check: relaxByVerify ? "prompt_expectation_relaxed_by_verify" : "prompt_expectation_match",
+      passed: relaxByVerify ? true : expectationMatched,
+      details: relaxByVerify
+        ? `${expectation.label}; relaxed because verify passed and prompt requested repair/verify outcome`
+        : expectation.label
+    });
+  }
+
+  checks.push({
+    check: "workspace_write_or_noop_observed",
+    passed: touched.length > 0 || verifyPassed,
+    details: touched.length > 0 ? touched : "noop_with_verify"
+  });
+
+  const passed = checks.every((item) => item && item.passed === true);
+  const verifyCoverageStatus = verifyCoverageSufficient ? "sufficient" : verifyPassed ? "insufficient" : "failed";
+  const acceptanceStatus = passed ? "passed" : verifyPassed && !verifyCoverageSufficient ? "partial" : "failed";
+  const relaxedByVerifyReason = relaxByVerify
+    ? "verify passed and coverage sufficient for prompt expectation"
+    : null;
+  const summary = buildTaskAcceptanceSummary({
+    promptText,
+    targetFiles: targets,
+    touchedFiles: touched,
+    verifyResult,
+    verificationPlan,
+    checks
+  });
+  const acceptancePayload = {
+    run_id: runId,
+    step_id: stepId,
+    prompt_expectation: expectation ? expectation.label : null,
+    verify_coverage: verifyCoverageStatus,
+    verifyCoverageSufficient,
+    verify_run_id: runId,
+    verify_event_id: verifyResult?.last_verify_event_id || null,
+    selected_command: selectedCommand,
+    coverage_reason: coverageBase.reason,
+    relaxed_by_verify_reason: relaxedByVerifyReason,
+    touched_files: touched,
+    target_files: targets,
+    checks,
+    status: acceptanceStatus
+  };
+  const acceptanceArtifactRef = toRepoRelative(
+    writeRunArtifact(
+      runId,
+      `acceptance/entry_task_acceptance_${Date.now()}.json`,
+      `${JSON.stringify(acceptancePayload, null, 2)}\n`
+    )
+  );
+  const reviewBody = [
+    "# Entry Task Review",
+    "",
+    `- run_id: ${runId}`,
+    `- step_id: ${stepId}`,
+    `- lane: task`,
+    `- status: ${acceptanceStatus}`,
+    "",
+    "## Summary",
+    "",
+    summary,
+    "",
+    "## Checks",
+    "",
+    ...checks.map((item, idx) => `${idx + 1}. ${item.check}: ${item.passed ? "passed" : "failed"}${item.details ? ` (${summarizeText(JSON.stringify(item.details), 260)})` : ""}`),
+    "",
+    "## Verify Coverage",
+    "",
+    `- selected_command: ${selectedCommand || "-"}`,
+    `- verify_coverage: ${verifyCoverageStatus}`,
+    `- coverage_reason: ${coverageBase.reason}`,
+    `- relaxed_by_verify_reason: ${relaxedByVerifyReason || "-"}`
+  ].join("\n");
+  const reviewDisk = writeRunArtifact(runId, `review_${Date.now()}.md`, `${reviewBody}\n`);
+  const reviewRef = toRepoRelative(reviewDisk);
+  emitEvent(runId, "review.available", {
+    step_id: stepId,
+    session_id: sessionId,
+    turn_id: turnId,
+    turn_index: turnIndex,
+    lane: "task",
+    artifact_ref: reviewRef,
+    acceptance_artifact_ref: acceptanceArtifactRef,
+    status: "completed",
+    summary: summarizeText(summary, 600)
+  });
+  emitEvent(runId, passed ? "acceptance.completed" : "acceptance.failed", {
+    step_id: stepId,
+    session_id: sessionId,
+    turn_id: turnId,
+    turn_index: turnIndex,
+    lane: "task",
+    artifact_ref: reviewRef,
+    acceptance_artifact_ref: acceptanceArtifactRef,
+    checks,
+    status: passed ? "completed" : "failed",
+    acceptance_status: acceptanceStatus,
+    verify_coverage: verifyCoverageStatus,
+    verifyCoverageSufficient,
+    verify_event_id: verifyResult?.last_verify_event_id || null,
+    selected_command: selectedCommand,
+    coverage_reason: coverageBase.reason,
+    relaxed_by_verify_reason: relaxedByVerifyReason
+  });
+  return {
+    passed,
+    summary,
+    artifact_ref: reviewRef,
+    acceptance_artifact_ref: acceptanceArtifactRef,
+    checks,
+    acceptance_status: acceptanceStatus,
+    verifyCoverageSufficient,
+    verify_event_id: verifyResult?.last_verify_event_id || null,
+    selected_command: selectedCommand,
+    coverage_reason: coverageBase.reason,
+    relaxed_by_verify_reason: relaxedByVerifyReason,
+    failure_summary: passed ? null : summarizeText(checks.filter((x) => !x.passed).map((x) => x.check).join(","), 220)
+  };
+}
+
+const MODEL_ACTION_INTENTS = new Set([
+  "inspect_file",
+  "patch_file",
+  "run_verify",
+  "run_command",
+  "install_toolchain_required",
+  "deploy_authorization_required"
+]);
+
+function normalizeModelActionPlan(rawActions, { taskId, targetFiles, attempt, requiresDeploy = false, requiresAuth = false, promptText = "", isRepair = false } = {}) {
+  const safeTargets = Array.isArray(targetFiles) ? targetFiles.map((x) => normalizeRelativeFilePath(x)).filter(Boolean) : [];
+  const normalized = [];
+  const list = Array.isArray(rawActions) ? rawActions : [];
+  for (let i = 0; i < list.length; i += 1) {
+    const row = list[i];
+    if (!row || typeof row !== "object") continue;
+    const intent = String(row.intent || "").trim();
+    if (!MODEL_ACTION_INTENTS.has(intent)) continue;
+    const actionIdRaw = String(row.action_id || "").trim();
+    const actionId = actionIdRaw || `act_${String(attempt || 1)}_${String(i + 1)}`;
+    normalized.push({
+      action_id: actionId,
+      intent,
+      target: runtimeFirstNonEmptyString(row.target, safeTargets[0], "."),
+      risk: ["low", "medium", "high"].includes(String(row.risk || "").toLowerCase()) ? String(row.risk || "").toLowerCase() : "low",
+      expected_result: summarizeText(String(row.expected_result || ""), 320) || "structured_action_applied",
+      requires_approval: row.requires_approval === true
+    });
+  }
+  if (normalized.length === 0) {
+    normalized.push(
+      {
+        action_id: `act_${String(attempt || 1)}_inspect`,
+        intent: "inspect_file",
+        target: safeTargets[0] || ".",
+        risk: "low",
+        expected_result: "load target file context",
+        requires_approval: false
+      },
+      {
+        action_id: `act_${String(attempt || 1)}_patch`,
+        intent: "patch_file",
+        target: safeTargets[0] || ".",
+        risk: "medium",
+        expected_result: "apply minimal safe patch",
+        requires_approval: false
+      },
+      {
+        action_id: `act_${String(attempt || 1)}_verify`,
+        intent: "run_verify",
+        target: safeTargets[0] || ".",
+        risk: "low",
+        expected_result: "verification command should pass",
+        requires_approval: false
+      }
+    );
+    if (requiresAuth) {
+      normalized.push({
+        action_id: `act_${String(attempt || 1)}_auth`,
+        intent: "run_command",
+        target: "auth_gate",
+        risk: "high",
+        expected_result: "authorization check before gated actions",
+        requires_approval: true
+      });
+    }
+    if (requiresDeploy || /\b(deploy|release|publish|preview|staging|prod|上线|发布)\b/i.test(String(promptText || ""))) {
+      normalized.push({
+        action_id: `act_${String(attempt || 1)}_deploy_gate`,
+        intent: "deploy_authorization_required",
+        target: "deploy_dry_run",
+        risk: "high",
+        expected_result: "deployment blocked until explicit authorization",
+        requires_approval: true
+      });
+    }
+    if (isRepair) {
+      normalized.push({
+        action_id: `act_${String(attempt || 1)}_repair_verify`,
+        intent: "run_verify",
+        target: safeTargets[0] || ".",
+        risk: "medium",
+        expected_result: "re-run verify after repair patch",
+        requires_approval: false
+      });
+    }
+  }
+  return normalized;
+}
+
+function buildResolvedCommandRecord({
+  actionId,
+  intent = "run_verify",
+  targetFiles = [],
+  workspaceRoot,
+  selectedCommand,
+  resolverPayload = null
+}) {
+  const parsed = splitCommand(String(selectedCommand || ""));
+  const blockedReason = parsed.command ? isBlockedShellCommand(parsed.command, parsed.args) : "command_missing";
+  return {
+    action_id: actionId || null,
+    intent,
+    target: Array.isArray(targetFiles) ? targetFiles : [],
+    risk: blockedReason ? "high" : "low",
+    expected_result: "command executes through resolver+policy gate",
+    requires_approval: Boolean(blockedReason),
+    resolver: {
+      selected_command: String(selectedCommand || ""),
+      candidate_commands: Array.isArray(resolverPayload?.candidate_commands) ? resolverPayload.candidate_commands : [],
+      reason: resolverPayload?.reason || null,
+      fallback_used: resolverPayload?.fallback_used === true
+    },
+    policy_gate: {
+      allowed: !blockedReason,
+      reason: blockedReason ? `blocked:${blockedReason}` : "allow"
+    },
+    command: String(selectedCommand || ""),
+    cwd: String(workspaceRoot || ""),
+    shell: inferHostShellType()
+  };
+}
+
+function buildToolchainInstallPlan({ tool, platform, selectedCommand, taskId, attempt, resumeToken }) {
+  const toolName = String(tool || "toolchain").toLowerCase();
+  const defaults = {
+    node: { version_policy: "lts", install_method: "official_installer_or_nvm" },
+    npm: { version_policy: "bundled_with_node_lts", install_method: "official_node_distribution" },
+    python: { version_policy: "3.x_stable", install_method: "official_installer_or_pyenv" },
+    go: { version_policy: "stable", install_method: "official_archive_or_package_manager" },
+    java: { version_policy: "17_or_21_lts", install_method: "package_manager_or_sdkman" },
+    flutter: { version_policy: "stable", install_method: "official_sdk_bundle" }
+  };
+  const resolved = defaults[toolName] || { version_policy: "stable", install_method: "manual_toolchain_install" };
+  return {
+    task_id: taskId,
+    attempt,
+    tool: toolName,
+    version_policy: resolved.version_policy,
+    install_method: resolved.install_method,
+    platform: String(platform || process.platform || "unknown"),
+    risk: "medium",
+    requires_approval: true,
+    selected_command: selectedCommand || null,
+    resume_token: resumeToken
+  };
+}
+
+async function executeEntryModelTaskRuntime({
+  runId,
+  stepId,
+  sessionId,
+  turnId,
+  turnIndex,
+  promptText,
+  workspacePath,
+  resolvedTargets
+}) {
+  const taskId = `entry_task_${String(turnId || Date.now())}`;
+  const prepareThinkingId = shortId("thk");
+  let prepareThinkingFinished = false;
+  const completePrepareThinking = (ok = true) => {
+    if (prepareThinkingFinished) return;
+    prepareThinkingFinished = true;
+    emitEvent(runId, "thinking.completed", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane: "task",
+      phase: "task_prepare",
+      task_id: taskId,
+      attempt: 1,
+      thinking_id: prepareThinkingId,
+      status: "completed",
+      ok: ok === true
+    });
+  };
+  emitEvent(runId, "thinking.started", {
+    step_id: stepId,
+    session_id: sessionId,
+    turn_id: turnId,
+    turn_index: turnIndex,
+    lane: "task",
+    phase: "task_prepare",
+    task_id: taskId,
+    attempt: 1,
+    thinking_id: prepareThinkingId,
+    status: "running"
+  });
+  const targetFiles = extractEntryTurnTargetFiles(resolvedTargets);
+  if (targetFiles.length === 0) {
+    completePrepareThinking(false);
+    return {
+      ok: false,
+      reason: "target_files_required"
+    };
+  }
+  const promptLower = String(promptText || "").toLowerCase();
+  const requiresDeploy = /\b(deploy|release|publish|preview|staging|prod|上线|发布)\b/i.test(promptLower);
+  const requiresAuth = /\b(auth|oauth|token|login|授权|认证)\b/i.test(promptLower);
+  const resolvedTargetSnapshot = normalizeResolvedTargetsForTurn(resolvedTargets || []);
+  const locateRows = targetFiles.map((rel) => {
+    const abs = workspaceAbsolutePath(workspacePath, rel);
+    return {
+      rel_path: rel,
+      exists: fs.existsSync(abs),
+      source: resolvedTargetSnapshot.find((x) => String(x.rel_path || "") === rel) || null
+    };
+  });
+  const missingTargets = locateRows.filter((x) => !x.exists).map((x) => x.rel_path);
+  const locateArtifactRef = toRepoRelative(
+    writeRunArtifact(
+      runId,
+      `plans/file_locate_${Date.now()}.json`,
+      `${JSON.stringify(
+        {
+          task_id: taskId,
+          workspace_root: workspacePath,
+          resolved_targets: resolvedTargetSnapshot,
+          locate_rows: locateRows,
+          missing_targets: missingTargets
+        },
+        null,
+        2
+      )}\n`
+    )
+  );
+  emitEvent(runId, "entry.task.file.locate.completed", {
+    step_id: stepId,
+    session_id: sessionId,
+    turn_id: turnId,
+    turn_index: turnIndex,
+    lane: "task",
+    target_files: targetFiles,
+    missing_targets: missingTargets,
+    status: missingTargets.length > 0 ? "failed" : "completed",
+    artifact_ref: locateArtifactRef
+  });
+  completePrepareThinking(missingTargets.length === 0);
+  if (missingTargets.length > 0) {
+    const missingReason = `target_missing_in_project:${missingTargets.join(",")}`;
+    emitEvent(runId, "diagnosis.note", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane: "task",
+      status: "failed",
+      reason: missingReason,
+      message: "Target file is not in current project root. Copy it into this project, then retry.",
+      missing_targets: missingTargets,
+      artifact_ref: locateArtifactRef
+    });
+    return {
+      ok: false,
+      reason: missingReason,
+      target_files: targetFiles,
+      missing_targets: missingTargets
+    };
+  }
+  const maxAttempts = Math.max(1, Math.min(3, parsePositiveInt(codeRepairLoopContract?.max_attempts, 2)));
+  const executionPlan = {
+    task_id: taskId,
+    task_type: "entry_targeted_patch",
+    affected_files: targetFiles,
+    verification_strategy: "workspace_signal_dynamic_selection",
+    risk_level: requiresDeploy || requiresAuth ? "guarded" : "normal",
+    requires_auth: requiresAuth,
+    requires_deploy: requiresDeploy,
+    workspace_root: workspacePath
+  };
+  const planArtifactRef = toRepoRelative(
+    writeRunArtifact(runId, `plans/entry_task_plan_${Date.now()}.json`, `${JSON.stringify(executionPlan, null, 2)}\n`)
+  );
+  emitEvent(runId, "entry.task.plan.available", {
+    step_id: stepId,
+    session_id: sessionId,
+    turn_id: turnId,
+    turn_index: turnIndex,
+    lane: "task",
+    task_id: taskId,
+    status: "completed",
+    artifact_ref: planArtifactRef,
+    plan: executionPlan
+  });
+  emitEvent(runId, "agent.note", {
+    step_id: stepId,
+    session_id: sessionId,
+    turn_id: turnId,
+    turn_index: turnIndex,
+    lane: "task",
+    task_id: taskId,
+    status: "running",
+    message: `Task plan created for ${targetFiles.length} file(s). Verify uses dynamic workspace signals.`,
+    artifact_ref: planArtifactRef
+  });
+  if (requiresDeploy) {
+    const deployResumeToken = `resume_${shortId("deploy")}_${Date.now()}`;
+    const deployGateArtifactRef = toRepoRelative(
+      writeRunArtifact(
+        runId,
+        `plans/deploy_gate_${Date.now()}.json`,
+        `${JSON.stringify(
+          {
+            task_id: taskId,
+            mode: "authorization_gate_dry_run",
+            deploy_requested: true,
+            authorized: false,
+            action: "deployment_not_started_without_user_authorization",
+            resume_token: deployResumeToken,
+            deploy_command_started: false,
+            no_false_deployed: true
+          },
+          null,
+          2
+        )}\n`
+      )
+    );
+    emitEvent(runId, "deploy.request.detected", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane: "task",
+      task_id: taskId,
+      status: "detected",
+      deploy_request_detected: true,
+      artifact_ref: deployGateArtifactRef
+    });
+    emitEvent(runId, "deploy.authorization.required", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane: "task",
+      task_id: taskId,
+      mode: "dry_run",
+      provider: "generic",
+      status: "waiting_user",
+      resume_token: deployResumeToken,
+      deploy_command_started: false,
+      no_false_deployed: true,
+      artifact_ref: deployGateArtifactRef
+    });
+    emitEvent(runId, "deploy.dry_run.plan.available", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane: "task",
+      task_id: taskId,
+      status: "completed",
+      dry_run_plan: true,
+      resume_token: deployResumeToken,
+      artifact_ref: deployGateArtifactRef
+    });
+  }
+  let usage = null;
+  let touchedFiles = [];
+  let verifyResult = { passed: false, results: [], failure_summary: "not_run" };
+  let verifySelection = { commands: [], candidates: [], signals: {} };
+  let acceptanceResult = null;
+  let lastFailure = "";
+  let attemptsUsed = 0;
+  const repairRounds = [];
+  let lastFailureContext = null;
+
+  const summarizeVerifyResolver = (selection, attemptIndex, noFileUpdates = false, actionPlan = []) => {
+    const resolverPayload = buildVerifyResolverEvidencePayload({
+      workspaceRoot: workspacePath,
+      taskId,
+      attemptIndex,
+      targetFiles,
+      promptText,
+      selection,
+      noFileUpdates
+    });
+    if (resolverPayload?.generated_validation_script?.generated && typeof resolverPayload.generated_validation_script.script_content === "string") {
+      const scriptRef = toRepoRelative(
+        writeRunArtifact(
+          runId,
+          `verify/generated_validation_${taskId}_attempt_${attemptIndex}_${Date.now()}.txt`,
+          resolverPayload.generated_validation_script.script_content
+        )
+      );
+      resolverPayload.generated_validation_script.script_artifact_ref = scriptRef;
+    }
+    const commands = Array.isArray(selection?.commands) ? selection.commands : [];
+    const resolverArtifactRef = toRepoRelative(
+      writeRunArtifact(
+        runId,
+        `verify/verify_resolver_${taskId}_attempt_${attemptIndex}_${Date.now()}.json`,
+        `${JSON.stringify(resolverPayload, null, 2)}\n`
+      )
+    );
+    emitEvent(runId, "entry.task.verify.resolver.selected", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane: "task",
+      task_id: taskId,
+      attempt: attemptIndex,
+      language: resolverPayload.language,
+      selected_command: commands[0] || null,
+      fallback_used: resolverPayload.fallback_used === true,
+      tool_missing: resolverPayload.tool_missing === true,
+      dry_run_detected: resolverPayload.dry_run_detected === true,
+      generated_validation_script: resolverPayload.generated_validation_script || null,
+      coverage_summary: resolverPayload.coverage_summary || null,
+      status: "completed",
+      artifact_ref: resolverArtifactRef
+    });
+    const runVerifyAction =
+      (Array.isArray(actionPlan) ? actionPlan : []).find((item) =>
+        item && typeof item === "object" && (item.intent === "run_verify" || item.intent === "run_command")
+      ) || null;
+    const resolvedRecord = buildResolvedCommandRecord({
+      actionId: runVerifyAction?.action_id || `act_${attemptIndex}_verify`,
+      intent: runVerifyAction?.intent || "run_verify",
+      targetFiles,
+      workspaceRoot: workspacePath,
+      selectedCommand: commands[0] || null,
+      resolverPayload
+    });
+    const resolvedCommandArtifactRef = toRepoRelative(
+      writeRunArtifact(
+        runId,
+        `commands/resolved_command_${taskId}_attempt_${attemptIndex}_${Date.now()}.json`,
+        `${JSON.stringify(resolvedRecord, null, 2)}\n`
+      )
+    );
+    emitEvent(runId, "command.resolved", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane: "task",
+      task_id: taskId,
+      attempt: attemptIndex,
+      action_id: resolvedRecord.action_id,
+      intent: resolvedRecord.intent,
+      command: resolvedRecord.command,
+      cwd: resolvedRecord.cwd,
+      shell: resolvedRecord.shell,
+      requires_approval: resolvedRecord.requires_approval,
+      policy_allowed: resolvedRecord.policy_gate?.allowed === true,
+      policy_reason: resolvedRecord.policy_gate?.reason || null,
+      status: resolvedRecord.policy_gate?.allowed === true ? "completed" : "failed",
+      artifact_ref: resolvedCommandArtifactRef
+    });
+    let toolchainGate = null;
+    if (resolverPayload?.tool_missing === true) {
+      const selected = String(commands[0] || "").trim();
+      const parsed = splitCommand(selected);
+      const resumeToken = `resume_${shortId("toolchain")}_${Date.now()}`;
+      const installPlan = buildToolchainInstallPlan({
+        tool: resolverPayload?.tool_probe?.tool || parsed.command || resolverPayload?.language || "toolchain",
+        platform: process.platform,
+        selectedCommand: selected || null,
+        taskId,
+        attempt: attemptIndex,
+        resumeToken
+      });
+      const installPlanArtifactRef = toRepoRelative(
+        writeRunArtifact(
+          runId,
+          `toolchain/install_plan_${taskId}_attempt_${attemptIndex}_${Date.now()}.json`,
+          `${JSON.stringify(installPlan, null, 2)}\n`
+        )
+      );
+      emitEvent(runId, "toolchain.missing", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane: "task",
+        task_id: taskId,
+        attempt: attemptIndex,
+        tool: installPlan.tool,
+        selected_command: selected || null,
+        reason: "tool_missing",
+        requires_approval: true,
+        status: "failed",
+        artifact_ref: installPlanArtifactRef
+      });
+      emitEvent(runId, "approval.required", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane: "task",
+        task_id: taskId,
+        attempt: attemptIndex,
+        mode: "toolchain_install",
+        provider: "local_toolchain",
+        requires_approval: true,
+        resume_token: resumeToken,
+        status: "waiting_user",
+        artifact_ref: installPlanArtifactRef
+      });
+      emitEvent(runId, "approval.waiting_user", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane: "task",
+        task_id: taskId,
+        attempt: attemptIndex,
+        mode: "toolchain_install",
+        provider: "local_toolchain",
+        requires_approval: true,
+        resume_token: resumeToken,
+        status: "waiting_user",
+        artifact_ref: installPlanArtifactRef
+      });
+      toolchainGate = {
+        blocked: true,
+        reason: "toolchain_missing_approval_required",
+        installPlanArtifactRef,
+        resumeToken
+      };
+    }
+    return {
+      commands,
+      resolverPayload,
+      resolverArtifactRef,
+      resolvedCommandArtifactRef,
+      toolchainGate
+    };
+  };
+
+  const collectAttemptDiffArtifacts = (attemptStartSeq) => {
+    const rows = dbAll(
+      "SELECT seq, payload_json FROM events WHERE run_id = ? AND type = 'diff.available' AND seq > ? ORDER BY seq ASC",
+      runId,
+      Number(attemptStartSeq || 0)
+    );
+    return rows
+      .map((row) => parsePayloadJson(row.payload_json))
+      .filter((payload) => payload && String(payload.task_id || "") === taskId)
+      .map((payload) => String(payload.artifact_ref || "").trim())
+      .filter(Boolean);
+  };
+
+  const emitVerifyFailureDiagnosis = (attemptIndex, isRepairRound, extra = {}, currentRound = null) => {
+    const failed = Array.isArray(verifyResult?.results) && verifyResult.results.length > 0
+      ? verifyResult.results[verifyResult.results.length - 1]
+      : null;
+    const diagnosisPayload = {
+      task_id: taskId,
+      attempt: attemptIndex,
+      trigger: "verify_failed",
+      command: failed?.command || null,
+      consumed_verify_event_id: failed?.verify_failed_event_id || verifyResult?.last_verify_event_id || null,
+      exit_code: Number.isFinite(Number(failed?.exit_code)) ? Number(failed.exit_code) : null,
+      stdout: summarizeText(failed?.stdout_summary || "", 1000),
+      stderr: summarizeText(failed?.stderr_summary || "", 1000),
+      failure_summary: summarizeText(verifyResult?.failure_summary || lastFailure || "verify_failed", 512),
+      ...extra
+    };
+    const diagnosisArtifactRef = toRepoRelative(
+      writeRunArtifact(
+        runId,
+        `repair/diagnosis_${taskId}_attempt_${attemptIndex}_${Date.now()}.json`,
+        `${JSON.stringify(diagnosisPayload, null, 2)}\n`
+      )
+    );
+    emitEvent(runId, "diagnosis.note", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane: "task",
+      task_id: taskId,
+      attempt: attemptIndex,
+      status: "failed",
+      message: `Verify failed (attempt ${attemptIndex}) with exit=${diagnosisPayload.exit_code ?? "n/a"}.`,
+      artifact_ref: diagnosisArtifactRef,
+      ...diagnosisPayload
+    });
+    if (isRepairRound) {
+      emitEvent(runId, "repair.note", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane: "task",
+        task_id: taskId,
+        attempt: attemptIndex,
+        status: "running",
+        message: `Repair round ${attemptIndex}: consumed verify stderr/stdout and prepared next patch.`,
+        artifact_ref: diagnosisArtifactRef
+      });
+    }
+    if (currentRound) {
+      currentRound.diagnosis_summary = diagnosisPayload.failure_summary;
+      currentRound.diagnosis_artifact_ref = diagnosisArtifactRef;
+      currentRound.result = "failed";
+    } else {
+      repairRounds.push({
+        attempt: attemptIndex,
+        status: "failed",
+        diagnosis_artifact_ref: diagnosisArtifactRef,
+        verify_passed: false,
+        failure_summary: diagnosisPayload.failure_summary
+      });
+    }
+    lastFailureContext = {
+      consumed_verify_event_id: failed?.verify_failed_event_id || verifyResult?.last_verify_event_id || null,
+      consumed_stdout_excerpt: summarizeText(failed?.stdout_summary || "", 360),
+      consumed_stderr_excerpt: summarizeText(failed?.stderr_summary || "", 360),
+      consumed_exitCode: Number.isFinite(Number(failed?.exit_code)) ? Number(failed.exit_code) : null
+    };
+    return diagnosisArtifactRef;
+  };
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    attemptsUsed = attempt + 1;
+    const isRepair = attempt > 0;
+    const attemptStartSeq = Number(
+      dbGet("SELECT COALESCE(MAX(seq), 0) AS n FROM events WHERE run_id = ?", runId)?.n || 0
+    );
+    const currentRepairRound = isRepair
+      ? {
+          repair_round: attempt,
+          attempt: attemptsUsed,
+          consumed_verify_event_id: lastFailureContext?.consumed_verify_event_id || null,
+          consumed_stdout_excerpt: summarizeText(lastFailureContext?.consumed_stdout_excerpt || "", 420),
+          consumed_stderr_excerpt: summarizeText(lastFailureContext?.consumed_stderr_excerpt || "", 420),
+          consumed_exitCode: Number.isFinite(Number(lastFailureContext?.consumed_exitCode))
+            ? Number(lastFailureContext.consumed_exitCode)
+            : null,
+          diagnosis_summary: null,
+          suspected_files: targetFiles,
+          patch_artifact: null,
+          next_verify_command: null,
+          result: "running",
+          completion_status: "running",
+          repair_started_event_id: null,
+          repair_completed_event_id: null
+        }
+      : null;
+    let repairCompletedEmitted = false;
+    const emitRepairCompleted = (status, extra = {}) => {
+      if (!isRepair || repairCompletedEmitted) return null;
+      const completedEvt = emitEvent(runId, "repair.completed", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane: "task",
+        attempt: attemptsUsed,
+        task_id: taskId,
+        status,
+        ...extra
+      });
+      emitEvent(runId, "repair.note", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane: "task",
+        task_id: taskId,
+        attempt: attemptsUsed,
+        status: status === "completed" ? "completed" : "failed",
+        message: `Repair round ${attemptsUsed}: ${status === "completed" ? "completed" : "failed"}${extra?.stage ? ` at ${String(extra.stage)}` : ""}${extra?.reason ? ` (${summarizeText(String(extra.reason), 180)})` : ""}.`,
+        consumed_verify_event_id: currentRepairRound?.consumed_verify_event_id || null,
+        next_verify_command: currentRepairRound?.next_verify_command || null
+      });
+      repairCompletedEmitted = true;
+      if (currentRepairRound) {
+        currentRepairRound.completion_status = status;
+        currentRepairRound.repair_completed_event_id = completedEvt?.event_id || null;
+      }
+      return completedEvt;
+    };
+    emitEvent(runId, isRepair ? "engineering.repair.started" : "entry.task.codegen.started", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      attempt: attemptsUsed,
+      task_id: taskId,
+      target_files: targetFiles
+    });
+    if (isRepair) {
+      const repairStartedEvt = emitEvent(runId, "repair.started", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane: "task",
+        attempt: attemptsUsed,
+        task_id: taskId,
+        target_files: targetFiles,
+        status: "running",
+        consumed_verify_event_id: currentRepairRound?.consumed_verify_event_id || null
+      });
+      emitEvent(runId, "repair.note", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane: "task",
+        task_id: taskId,
+        attempt: attemptsUsed,
+        status: "running",
+        message: `Repair round ${attemptsUsed}: ${summarizeText(lastFailure || "previous attempt failed", 220)}. Preparing minimal patch and re-verify.`,
+        consumed_verify_event_id: currentRepairRound?.consumed_verify_event_id || null
+      });
+      if (currentRepairRound) {
+        currentRepairRound.repair_started_event_id = repairStartedEvt?.event_id || null;
+      }
+    }
+
+    const modelTask = {
+      task_id: taskId,
+      task_type: "entry_targeted_patch",
+      original_user_ask: isRepair
+        ? `${String(promptText || "").trim()}\nRepair objective: verification failed in previous attempt. Prioritize passing verification with minimal safe edits, even if it requires correcting conflicting literal wording from the original ask.`
+        : String(promptText || "").trim(),
+      target_files: targetFiles
+    };
+    const codegenThinkingId = shortId("thk");
+    emitEvent(runId, "thinking.started", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane: "task",
+      phase: "task_codegen",
+      task_id: taskId,
+      attempt: attemptsUsed,
+      thinking_id: codegenThinkingId,
+      status: "running"
+    });
+    const modelResult = await generateFileUpdatesWithModel({
+      runId,
+      task: modelTask,
+      filePlan: {
+        target_files: targetFiles
+      },
+      verifyFailure: isRepair ? summarizeText(lastFailure || "verify_failed", 300) : null,
+      workspaceRoot: workspacePath
+    });
+    emitEvent(runId, "thinking.completed", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane: "task",
+      phase: "task_codegen",
+      task_id: taskId,
+      attempt: attemptsUsed,
+      thinking_id: codegenThinkingId,
+      status: "completed",
+      ok: Boolean(modelResult?.ok)
+    });
+    usage = compileUsageAccumulator(usage, modelResult.usage, modelResult.latency_ms);
+    if (!modelResult.ok) {
+      lastFailure = summarizeText(modelResult.error || modelResult.failure_reason || "entry_task_codegen_failed", 300);
+      emitEvent(runId, "entry.task.codegen.failed_controlled", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        attempt: attemptsUsed,
+        reason: lastFailure
+      });
+      if (currentRepairRound) {
+        currentRepairRound.diagnosis_summary = lastFailure;
+        currentRepairRound.result = "failed";
+        currentRepairRound.stage = "codegen";
+        repairRounds.push(currentRepairRound);
+        emitRepairCompleted("failed", { stage: "codegen", reason: lastFailure });
+      } else {
+        repairRounds.push({
+          attempt: attemptsUsed,
+          status: "failed",
+          stage: "codegen",
+          failure_summary: lastFailure
+        });
+      }
+      continue;
+    }
+
+    const modelActionPlan = normalizeModelActionPlan(modelResult.json?.action_plan, {
+      taskId,
+      targetFiles,
+      attempt: attemptsUsed,
+      requiresDeploy,
+      requiresAuth,
+      promptText,
+      isRepair
+    });
+    const modelActionPlanArtifactRef = toRepoRelative(
+      writeRunArtifact(
+        runId,
+        `actions/model_action_plan_${taskId}_attempt_${attemptsUsed}_${Date.now()}.json`,
+        `${JSON.stringify(
+          {
+            task_id: taskId,
+            attempt: attemptsUsed,
+            model_shell_allowed: false,
+            command_source: "resolver_only",
+            action_plan: modelActionPlan
+          },
+          null,
+          2
+        )}\n`
+      )
+    );
+    emitEvent(runId, "model.action.plan.available", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane: "task",
+      task_id: taskId,
+      attempt: attemptsUsed,
+      status: "completed",
+      actions_count: modelActionPlan.length,
+      artifact_ref: modelActionPlanArtifactRef
+    });
+
+    const updates = Array.isArray(modelResult.json?.updates) ? modelResult.json.updates : [];
+    if (updates.length === 0) {
+      verifySelection = normalizeVerificationCommandsForTask("entry_targeted_patch", [], {
+        workspaceRoot: workspacePath,
+        targetFiles: targetFiles,
+        promptText,
+        maxCommands: 1,
+        returnMetadata: true
+      });
+      const verifyResolver = summarizeVerifyResolver(verifySelection, attemptsUsed, true, modelActionPlan);
+      const verifyCommands = Array.isArray(verifyResolver?.commands) ? verifyResolver.commands : [];
+      if (verifyResolver?.toolchainGate?.blocked) {
+        lastFailure = summarizeText(String(verifyResolver.toolchainGate.reason || "toolchain_missing_approval_required"), 300);
+        emitEvent(runId, "entry.task.verify.failed_controlled", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          attempt: attemptsUsed,
+          task_id: taskId,
+          reason: lastFailure,
+          toolchain_gate_artifact_ref: verifyResolver.toolchainGate.installPlanArtifactRef || null,
+          approval_required: true
+        });
+        if (currentRepairRound) {
+          currentRepairRound.diagnosis_summary = lastFailure;
+          currentRepairRound.result = "failed";
+          currentRepairRound.stage = "toolchain_gate";
+          currentRepairRound.next_verify_command = verifyCommands[0] || null;
+          repairRounds.push(currentRepairRound);
+          emitRepairCompleted("failed", { stage: "toolchain_gate", reason: lastFailure });
+        } else {
+          repairRounds.push({
+            attempt: attemptsUsed,
+            status: "failed",
+            stage: "toolchain_gate",
+            failure_summary: lastFailure
+          });
+        }
+        break;
+      }
+      if (currentRepairRound) {
+        currentRepairRound.next_verify_command = verifyCommands[0] || null;
+      }
+      emitEvent(runId, "entry.task.verify.plan.selected", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        attempt: attemptsUsed,
+        task_id: taskId,
+        commands: verifyCommands,
+        candidate_count: Array.isArray(verifySelection?.candidates) ? verifySelection.candidates.length : 0,
+        no_file_updates: true,
+        artifact_ref: verifyResolver?.resolverArtifactRef || null
+      });
+      if (verifyCommands.length === 0) {
+        verifyResult = {
+          passed: true,
+          results: [],
+          failure_summary: null
+        };
+        acceptanceResult = runEntryTaskAcceptanceExecutor({
+          runId,
+          stepId,
+          sessionId,
+          turnId,
+          turnIndex,
+          promptText,
+          workspacePath,
+          targetFiles,
+          touchedFiles: [],
+          verifyResult,
+          verificationPlan: verifySelection
+        });
+        if (!acceptanceResult.passed) {
+          lastFailure = summarizeText(acceptanceResult.failure_summary || "entry_task_acceptance_failed", 300);
+          emitEvent(runId, "entry.task.acceptance.failed_controlled", {
+            step_id: stepId,
+            session_id: sessionId,
+            turn_id: turnId,
+            turn_index: turnIndex,
+            attempt: attemptsUsed,
+            task_id: taskId,
+            reason: lastFailure
+          });
+          if (currentRepairRound) {
+            currentRepairRound.diagnosis_summary = lastFailure;
+            currentRepairRound.result = "failed";
+            currentRepairRound.stage = "acceptance";
+            currentRepairRound.next_verify_command = null;
+            repairRounds.push(currentRepairRound);
+            emitRepairCompleted("failed", { stage: "acceptance", reason: lastFailure });
+          } else {
+            repairRounds.push({
+              attempt: attemptsUsed,
+              status: "failed",
+              stage: "acceptance",
+              failure_summary: lastFailure
+            });
+          }
+          continue;
+        }
+        if (currentRepairRound) {
+          currentRepairRound.result = "passed";
+          currentRepairRound.stage = "acceptance";
+          currentRepairRound.next_verify_command = null;
+          repairRounds.push(currentRepairRound);
+          emitRepairCompleted("completed", { stage: "acceptance" });
+        } else {
+          repairRounds.push({
+            attempt: attemptsUsed,
+            status: "passed",
+            verify_passed: true,
+            acceptance_passed: true,
+            touched_files: []
+          });
+        }
+        break;
+      }
+      verifyResult = runVerificationPipeline({
+        runId,
+        taskId,
+        workspaceRoot: workspacePath,
+        commands: verifyCommands,
+        stepId,
+        attempt: attemptsUsed
+      });
+      if (verifyResult.passed) {
+        acceptanceResult = runEntryTaskAcceptanceExecutor({
+          runId,
+          stepId,
+          sessionId,
+          turnId,
+          turnIndex,
+          promptText,
+          workspacePath,
+          targetFiles,
+          touchedFiles: [],
+          verifyResult,
+          verificationPlan: verifySelection
+        });
+        if (acceptanceResult.passed) {
+          if (currentRepairRound) {
+            currentRepairRound.result = "passed";
+            currentRepairRound.stage = "verify";
+            repairRounds.push(currentRepairRound);
+            emitRepairCompleted("completed", { stage: "verify" });
+          } else {
+            repairRounds.push({
+              attempt: attemptsUsed,
+              status: "passed",
+              verify_passed: true,
+              acceptance_passed: true,
+              touched_files: []
+            });
+          }
+          break;
+        }
+        lastFailure = summarizeText(acceptanceResult.failure_summary || "entry_task_acceptance_failed", 300);
+        emitEvent(runId, "entry.task.acceptance.failed_controlled", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          attempt: attemptsUsed,
+          task_id: taskId,
+          reason: lastFailure
+        });
+        if (currentRepairRound) {
+          currentRepairRound.diagnosis_summary = lastFailure;
+          currentRepairRound.result = "failed";
+          currentRepairRound.stage = "acceptance";
+          repairRounds.push(currentRepairRound);
+          emitRepairCompleted("failed", { stage: "acceptance", reason: lastFailure });
+        } else {
+          repairRounds.push({
+            attempt: attemptsUsed,
+            status: "failed",
+            stage: "acceptance",
+            failure_summary: lastFailure
+          });
+        }
+        continue;
+      }
+      emitRepairCompleted("failed", { stage: "verify_no_updates" });
+      if (verifyResult.passed) {
+        break;
+      }
+      lastFailure = summarizeText(verifyResult.failure_summary || "entry_task_codegen_empty_updates", 300);
+      emitVerifyFailureDiagnosis(attemptsUsed, isRepair, { stage: "no_file_updates" }, currentRepairRound);
+      emitEvent(runId, "entry.task.codegen.failed_controlled", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        attempt: attemptsUsed,
+        reason: lastFailure
+      });
+      emitEvent(runId, "entry.task.verify.failed_controlled", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        attempt: attemptsUsed,
+        task_id: taskId,
+        reason: lastFailure
+      });
+      if (currentRepairRound) {
+        currentRepairRound.next_verify_command = verifyCommands[0] || null;
+        repairRounds.push(currentRepairRound);
+      }
+      continue;
+    }
+
+    try {
+      touchedFiles = applyModelFileUpdates({
+        runId,
+        taskId,
+        stepId,
+        sessionId,
+        turnId,
+        turnIndex,
+        lane: "task",
+        workspaceRoot: workspacePath,
+        updates,
+        allowCreate: false,
+        allowedPaths: targetFiles
+      });
+    } catch (error) {
+      lastFailure = summarizeText(
+        `entry_task_apply_failed:${error instanceof Error ? error.message : String(error)}`,
+        320
+      );
+      emitEvent(runId, "entry.task.apply.failed_controlled", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        attempt: attemptsUsed,
+        reason: lastFailure
+      });
+      emitEvent(runId, "diagnosis.note", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane: "task",
+        task_id: taskId,
+        attempt: attemptsUsed,
+        status: "failed",
+        message: summarizeText(lastFailure, 300),
+        reason: "apply_failed"
+      });
+      if (currentRepairRound) {
+        currentRepairRound.diagnosis_summary = lastFailure;
+        currentRepairRound.result = "failed";
+        currentRepairRound.stage = "apply";
+        repairRounds.push(currentRepairRound);
+        emitRepairCompleted("failed", { stage: "apply", reason: lastFailure });
+      } else {
+        repairRounds.push({
+          attempt: attemptsUsed,
+          status: "failed",
+          stage: "apply",
+          failure_summary: lastFailure
+        });
+      }
+      continue;
+    }
+    const attemptDiffArtifacts = collectAttemptDiffArtifacts(attemptStartSeq);
+    if (currentRepairRound && attemptDiffArtifacts.length > 0) {
+      currentRepairRound.patch_artifact = attemptDiffArtifacts[0];
+      currentRepairRound.patch_artifacts = attemptDiffArtifacts;
+    }
+
+    verifySelection = normalizeVerificationCommandsForTask("entry_targeted_patch", [], {
+      workspaceRoot: workspacePath,
+      targetFiles: touchedFiles.length > 0 ? touchedFiles : targetFiles,
+      promptText,
+      maxCommands: 1,
+      returnMetadata: true
+    });
+    const verifyResolver = summarizeVerifyResolver(verifySelection, attemptsUsed, false, modelActionPlan);
+    const verifyCommands = Array.isArray(verifyResolver?.commands) ? verifyResolver.commands : [];
+    if (verifyResolver?.toolchainGate?.blocked) {
+      lastFailure = summarizeText(String(verifyResolver.toolchainGate.reason || "toolchain_missing_approval_required"), 300);
+      emitEvent(runId, "entry.task.verify.failed_controlled", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        attempt: attemptsUsed,
+        task_id: taskId,
+        reason: lastFailure,
+        toolchain_gate_artifact_ref: verifyResolver.toolchainGate.installPlanArtifactRef || null,
+        approval_required: true
+      });
+      if (currentRepairRound) {
+        currentRepairRound.diagnosis_summary = lastFailure;
+        currentRepairRound.result = "failed";
+        currentRepairRound.stage = "toolchain_gate";
+        currentRepairRound.next_verify_command = verifyCommands[0] || null;
+        repairRounds.push(currentRepairRound);
+        emitRepairCompleted("failed", { stage: "toolchain_gate", reason: lastFailure });
+      } else {
+        repairRounds.push({
+          attempt: attemptsUsed,
+          status: "failed",
+          stage: "toolchain_gate",
+          failure_summary: lastFailure
+        });
+      }
+      break;
+    }
+    if (currentRepairRound) {
+      currentRepairRound.next_verify_command = verifyCommands[0] || null;
+    }
+    emitEvent(runId, "entry.task.verify.plan.selected", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      attempt: attemptsUsed,
+      task_id: taskId,
+      commands: verifyCommands,
+      candidate_count: Array.isArray(verifySelection?.candidates) ? verifySelection.candidates.length : 0,
+      artifact_ref: verifyResolver?.resolverArtifactRef || null
+    });
+    if (verifyCommands.length === 0) {
+      verifyResult = {
+        passed: true,
+        results: [],
+        failure_summary: null
+      };
+      acceptanceResult = runEntryTaskAcceptanceExecutor({
+        runId,
+        stepId,
+        sessionId,
+        turnId,
+        turnIndex,
+        promptText,
+        workspacePath,
+        targetFiles,
+        touchedFiles,
+        verifyResult,
+        verificationPlan: verifySelection
+      });
+      if (!acceptanceResult.passed) {
+        lastFailure = summarizeText(acceptanceResult.failure_summary || "entry_task_acceptance_failed", 300);
+        emitEvent(runId, "entry.task.acceptance.failed_controlled", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          attempt: attemptsUsed,
+          task_id: taskId,
+          reason: lastFailure
+        });
+        if (currentRepairRound) {
+          currentRepairRound.diagnosis_summary = lastFailure;
+          currentRepairRound.result = "failed";
+          currentRepairRound.stage = "acceptance";
+          repairRounds.push(currentRepairRound);
+          emitRepairCompleted("failed", { stage: "acceptance", reason: lastFailure });
+        } else {
+          repairRounds.push({
+            attempt: attemptsUsed,
+            status: "failed",
+            stage: "acceptance",
+            failure_summary: lastFailure
+          });
+        }
+        continue;
+      }
+      if (currentRepairRound) {
+        currentRepairRound.result = "passed";
+        currentRepairRound.stage = "acceptance";
+        repairRounds.push(currentRepairRound);
+        emitRepairCompleted("completed", { stage: "acceptance" });
+      } else {
+        repairRounds.push({
+          attempt: attemptsUsed,
+          status: "passed",
+          verify_passed: true,
+          acceptance_passed: true,
+          touched_files: touchedFiles
+        });
+      }
+      break;
+    }
+
+      verifyResult = runVerificationPipeline({
+        runId,
+        taskId,
+        workspaceRoot: workspacePath,
+        commands: verifyCommands,
+        stepId,
+        attempt: attemptsUsed
+      });
+    if (verifyResult.passed) {
+      acceptanceResult = runEntryTaskAcceptanceExecutor({
+        runId,
+        stepId,
+        sessionId,
+        turnId,
+        turnIndex,
+        promptText,
+        workspacePath,
+        targetFiles,
+        touchedFiles,
+        verifyResult,
+        verificationPlan: verifySelection
+      });
+      if (acceptanceResult.passed) {
+        if (currentRepairRound) {
+          currentRepairRound.result = "passed";
+          currentRepairRound.stage = "verify";
+          repairRounds.push(currentRepairRound);
+          emitRepairCompleted("completed", { stage: "verify" });
+        } else {
+          repairRounds.push({
+            attempt: attemptsUsed,
+            status: "passed",
+            verify_passed: true,
+            acceptance_passed: true,
+            touched_files: touchedFiles
+          });
+        }
+        break;
+      }
+      lastFailure = summarizeText(acceptanceResult.failure_summary || "entry_task_acceptance_failed", 300);
+      emitEvent(runId, "entry.task.acceptance.failed_controlled", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        attempt: attemptsUsed,
+        task_id: taskId,
+        reason: lastFailure
+      });
+      if (currentRepairRound) {
+        currentRepairRound.diagnosis_summary = lastFailure;
+        currentRepairRound.result = "failed";
+        currentRepairRound.stage = "acceptance";
+        repairRounds.push(currentRepairRound);
+        emitRepairCompleted("failed", { stage: "acceptance", reason: lastFailure });
+      } else {
+        repairRounds.push({
+          attempt: attemptsUsed,
+          status: "failed",
+          stage: "acceptance",
+          failure_summary: lastFailure
+        });
+      }
+      continue;
+    }
+
+    emitRepairCompleted("failed", { stage: "verify_post_patch" });
+    if (verifyResult.passed) {
+      break;
+    }
+
+    lastFailure = summarizeText(verifyResult.failure_summary || "entry_task_verify_failed", 300);
+    emitVerifyFailureDiagnosis(attemptsUsed, isRepair, { stage: "post_patch_verify" }, currentRepairRound);
+    emitEvent(runId, "entry.task.verify.failed_controlled", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      attempt: attemptsUsed,
+      task_id: taskId,
+      reason: lastFailure
+    });
+    if (currentRepairRound) {
+      repairRounds.push(currentRepairRound);
+    }
+  }
+
+  const normalizedRepairRounds = repairRounds.map((row, idx) => ({
+    repair_round: idx + 1,
+    attempt: Number.isFinite(Number(row?.attempt)) ? Number(row.attempt) : idx + 1,
+    consumed_verify_event_id: row?.consumed_verify_event_id || null,
+    consumed_stdout_excerpt: summarizeText(row?.consumed_stdout_excerpt || "", 420),
+    consumed_stderr_excerpt: summarizeText(row?.consumed_stderr_excerpt || "", 420),
+    consumed_exitCode: Number.isFinite(Number(row?.consumed_exitCode)) ? Number(row.consumed_exitCode) : null,
+    diagnosis_summary: summarizeText(row?.diagnosis_summary || row?.failure_summary || "", 420),
+    suspected_files: Array.isArray(row?.suspected_files) ? row.suspected_files : targetFiles,
+    patch_artifact: row?.patch_artifact || null,
+    patch_artifacts: Array.isArray(row?.patch_artifacts) ? row.patch_artifacts : row?.patch_artifact ? [row.patch_artifact] : [],
+    diagnosis_artifact_ref: row?.diagnosis_artifact_ref || null,
+    next_verify_command: row?.next_verify_command || null,
+    result: row?.result || row?.status || "unknown",
+    completion_status: row?.completion_status || row?.status || "unknown",
+    stage: row?.stage || null,
+    repair_started_event_id: row?.repair_started_event_id || null,
+    repair_completed_event_id: row?.repair_completed_event_id || null
+  }));
+  const repairStartedCount = Number(
+    dbGet("SELECT COUNT(1) AS n FROM events WHERE run_id = ? AND type = 'repair.started'", runId)?.n || 0
+  );
+  const repairCompletedCount = Number(
+    dbGet("SELECT COUNT(1) AS n FROM events WHERE run_id = ? AND type = 'repair.completed'", runId)?.n || 0
+  );
+  const repairLoopArtifactRef = toRepoRelative(
+    writeRunArtifact(
+      runId,
+      `repair/repair_loop_${taskId}_${Date.now()}.json`,
+      `${JSON.stringify(
+        {
+          task_id: taskId,
+          max_attempts: maxAttempts,
+          max_repair_rounds: Math.max(0, Number(maxAttempts || 0) - 1),
+          attempts_used: attemptsUsed,
+          rounds: normalizedRepairRounds,
+          repair_started_count: repairStartedCount,
+          repair_completed_count: repairCompletedCount,
+          repair_event_count_consistent: repairStartedCount === repairCompletedCount,
+          consumed_failure_events: normalizedRepairRounds.some((x) => String(x.consumed_verify_event_id || "").trim().length > 0),
+          final_status: verifyResult.passed && acceptanceResult?.passed ? "passed" : "failed_controlled"
+        },
+        null,
+        2
+      )}\n`
+    )
+  );
+  emitEvent(runId, "repair.loop.available", {
+    step_id: stepId,
+    session_id: sessionId,
+    turn_id: turnId,
+    turn_index: turnIndex,
+    lane: "task",
+    task_id: taskId,
+    max_repair_rounds: Math.max(0, Number(maxAttempts || 0) - 1),
+    attempts_used: attemptsUsed,
+    rounds: normalizedRepairRounds.length,
+    status: verifyResult.passed && acceptanceResult?.passed ? "completed" : "failed",
+    repair_started_count: repairStartedCount,
+    repair_completed_count: repairCompletedCount,
+    repair_event_count_consistent: repairStartedCount === repairCompletedCount,
+    consumed_failure_events: normalizedRepairRounds.some((x) => String(x.consumed_verify_event_id || "").trim().length > 0),
+    artifact_ref: repairLoopArtifactRef
+  });
+
+  const usageSummary = usage
+    ? {
+        prompt_tokens: Number(usage.prompt_tokens || 0),
+        completion_tokens: Number(usage.completion_tokens || 0),
+        total_tokens: Number(usage.total_tokens || 0),
+        calls: Number(usage.calls || 0),
+        latency_ms: Number(usage.latency_ms || 0)
+      }
+    : null;
+  if (!verifyResult.passed || !acceptanceResult?.passed) {
+    return {
+      ok: false,
+      reason: summarizeText(lastFailure || acceptanceResult?.failure_summary || verifyResult.failure_summary || "entry_task_runtime_failed", 320),
+      task_id: taskId,
+      target_files: targetFiles,
+      touched_files: touchedFiles,
+      verify_result: verifyResult,
+      verification_plan: verifySelection,
+      acceptance_result: acceptanceResult || null,
+      attempts_used: attemptsUsed,
+      usage: usageSummary,
+      plan_artifact_ref: planArtifactRef,
+      file_locate_artifact_ref: locateArtifactRef,
+      repair_loop_artifact_ref: repairLoopArtifactRef
+    };
+  }
+
+  const acceptanceSummary = summarizeText(acceptanceResult?.summary || "", 1600) || "";
+  return {
+    ok: true,
+    message: acceptanceSummary || "Task accepted.",
+    task_id: taskId,
+    target_files: targetFiles,
+    touched_files: touchedFiles,
+    verify_result: verifyResult,
+    verification_plan: verifySelection,
+    acceptance_result: acceptanceResult,
+    attempts_used: attemptsUsed,
+    usage: usageSummary,
+    plan_artifact_ref: planArtifactRef,
+    file_locate_artifact_ref: locateArtifactRef,
+    repair_loop_artifact_ref: repairLoopArtifactRef
   };
 }
 
@@ -6508,7 +8568,7 @@ function finalizeRunSilently(runId, status = "completed", marker = "entry.sessio
   writeRunMeta(runId);
 }
 
-function executeEntryTurnRun(runId, plan = {}) {
+async function executeEntryTurnRun(runId, plan = {}) {
   const lane = normalizeEntryTurnLane(plan.lane);
   const stepId = typeof plan.stepId === "string" && plan.stepId.trim() ? plan.stepId.trim() : `step.entry.turn.${lane}`;
   const sessionId = typeof plan.sessionId === "string" && plan.sessionId.trim() ? plan.sessionId.trim() : null;
@@ -6535,13 +8595,16 @@ function executeEntryTurnRun(runId, plan = {}) {
     });
 
     if (lane === "chat") {
+      const route = resolveOpenAiProviderRoute();
       emitEvent(runId, "planner.completed", {
         step_id: stepId,
         session_id: sessionId,
         turn_id: turnId,
         lane,
         executor: "entry_chat_executor",
-        adapter: "chat.runtime"
+        adapter: "openai.responses",
+        provider: route.provider_id,
+        model: route.model
       });
       emitEvent(runId, "executor.started", {
         step_id: stepId,
@@ -6550,32 +8613,74 @@ function executeEntryTurnRun(runId, plan = {}) {
         lane,
         executor: "entry_chat_executor"
       });
+      emitEvent(runId, "adapter.chat.started", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        lane,
+        provider: route.provider_id,
+        model: route.model
+      });
+      const chatThinkingId = shortId("thk");
+      emitEvent(runId, "thinking.started", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane,
+        phase: "chat_reply",
+        thinking_id: chatThinkingId,
+        status: "running"
+      });
       const startedAt = nowIso();
-      const reply = buildEntryTurnChatReply({
-        promptText,
+      const replyResult = await generateEntryTurnChatReply({
         runId,
-        workspacePath,
+        stepId,
+        sessionId,
+        turnId,
         turnIndex,
+        promptText,
+        workspacePath,
         resolver
+      });
+      emitEvent(runId, "thinking.completed", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane,
+        phase: "chat_reply",
+        thinking_id: chatThinkingId,
+        status: "completed",
+        ok: replyResult.ok
       });
       const adapterRow = recordAdapterRun({
         runId,
-        adapterId: "chat.runtime",
-        commandOrAction: "compose_reply",
+        adapterId: "openai.responses.entry_chat",
+        commandOrAction: "entry_chat_reply",
         cwd: workspacePath,
-        status: "completed",
+        status: replyResult.ok ? "completed" : "failed_controlled",
         startedAt,
         completedAt: nowIso(),
-        exitCode: 0,
-        stdoutSummary: summarizeText(reply, 1200),
-        stderrSummary: null
+        exitCode: replyResult.ok ? 0 : 1,
+        stdoutSummary: summarizeText(replyResult.reply, 1200),
+        stderrSummary: replyResult.ok
+          ? null
+          : summarizeText(
+              `${replyResult.error || "entry_chat_model_failed"}${replyResult.failure_layer ? `:${replyResult.failure_layer}` : ""}`,
+              360
+            )
       });
       emitEvent(runId, "adapter.chat.completed", {
         step_id: stepId,
         session_id: sessionId,
         turn_id: turnId,
         lane,
-        adapter_run_id: adapterRow.id
+        adapter_run_id: adapterRow.id,
+        ok: replyResult.ok,
+        provider: route.provider_id,
+        model: route.model,
+        usage: replyResult.usage || null
       });
       emitEvent(runId, "executor.completed", {
         step_id: stepId,
@@ -6583,15 +8688,160 @@ function executeEntryTurnRun(runId, plan = {}) {
         turn_id: turnId,
         lane,
         executor: "entry_chat_executor",
-        adapter_run_id: adapterRow.id
+        adapter_run_id: adapterRow.id,
+        ok: replyResult.ok
       });
+      if (!replyResult.ok) {
+        const reason = summarizeText(
+          replyResult.error || replyResult.failure_layer || "entry_chat_model_failed",
+          220
+        );
+        emitEvent(runId, "step.failed_controlled", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          lane,
+          reason,
+          adapter_run_id: adapterRow.id
+        });
+        if (turnId) {
+          patchEntrySessionTurn(turnId, {
+            status: "failed_controlled",
+            updated_at: nowIso()
+          });
+        }
+        if (sessionId) {
+          touchEntrySession(sessionId);
+        }
+        return;
+      }
       emitEvent(runId, "step.completed", {
         step_id: stepId,
         session_id: sessionId,
         turn_id: turnId,
         turn_index: turnIndex,
         lane,
-        message: reply,
+        message: replyResult.reply,
+        adapter_run_id: adapterRow.id
+      });
+      if (turnId) {
+        patchEntrySessionTurn(turnId, {
+          status: "completed",
+          updated_at: nowIso()
+        });
+      }
+      if (sessionId) {
+        touchEntrySession(sessionId);
+      }
+      return;
+    }
+
+    const useModelTaskExecutor = shouldUseEntryModelTaskExecutor({
+      promptText,
+      resolver,
+      resolvedTargets
+    });
+    if (useModelTaskExecutor) {
+      emitEvent(runId, "planner.completed", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        lane,
+        executor: "entry_task_executor",
+        adapter: "openai.codegen",
+        route_reason: "entry_targeted_patch_runtime",
+        resolved_targets: resolvedTargets.map((item) => ({
+          type: item.type,
+          rel_path: item.rel_path,
+          symbol: item.symbol || null
+        }))
+      });
+      emitEvent(runId, "executor.started", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        lane,
+        executor: "entry_task_executor"
+      });
+      emitEvent(runId, "adapter.codegen.started", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        lane,
+        target_files: extractEntryTurnTargetFiles(resolvedTargets)
+      });
+      const startedAt = nowIso();
+      const modelTaskResult = await executeEntryModelTaskRuntime({
+        runId,
+        stepId,
+        sessionId,
+        turnId,
+        turnIndex,
+        promptText,
+        workspacePath,
+        resolvedTargets
+      });
+      const adapterRow = recordAdapterRun({
+        runId,
+        adapterId: "openai.codegen.entry_task",
+        commandOrAction: "entry_targeted_patch",
+        cwd: workspacePath,
+        status: modelTaskResult.ok ? "completed" : "failed_controlled",
+        startedAt,
+        completedAt: nowIso(),
+        exitCode: modelTaskResult.ok ? 0 : 1,
+        stdoutSummary: summarizeText(modelTaskResult.message || "", 1200),
+        stderrSummary: modelTaskResult.ok ? null : summarizeText(modelTaskResult.reason || "entry_task_runtime_failed", 400)
+      });
+      emitEvent(runId, "adapter.codegen.completed", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        lane,
+        adapter_run_id: adapterRow.id,
+        ok: modelTaskResult.ok,
+        verify_passed: Boolean(modelTaskResult?.verify_result?.passed),
+        attempts_used: Number(modelTaskResult.attempts_used || 0),
+        usage: modelTaskResult.usage || null
+      });
+      emitEvent(runId, "executor.completed", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        lane,
+        executor: "entry_task_executor",
+        adapter_run_id: adapterRow.id,
+        ok: modelTaskResult.ok
+      });
+      if (!modelTaskResult.ok) {
+        emitEvent(runId, "step.failed_controlled", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          lane,
+          reason: summarizeText(modelTaskResult.reason || "entry_task_runtime_failed", 240),
+          adapter_run_id: adapterRow.id
+        });
+        if (turnId) {
+          patchEntrySessionTurn(turnId, {
+            status: "failed_controlled",
+            updated_at: nowIso()
+          });
+        }
+        if (sessionId) {
+          touchEntrySession(sessionId);
+        }
+        return;
+      }
+      emitEvent(runId, "step.completed", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane,
+        message: modelTaskResult.message,
         adapter_run_id: adapterRow.id
       });
       if (turnId) {
@@ -6609,6 +8859,36 @@ function executeEntryTurnRun(runId, plan = {}) {
     const commandPlan = buildEntryTurnTaskCommandPlan(promptText, {
       resolvedTargets
     });
+    if (!String(commandPlan.command || "").trim()) {
+      const reason = "task_action_not_resolved";
+      emitEvent(runId, "planner.completed", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        lane,
+        executor: "entry_task_executor",
+        adapter: "shell",
+        route_reason: commandPlan.summary || reason
+      });
+      emitEvent(runId, "step.failed_controlled", {
+        step_id: stepId,
+        session_id: sessionId,
+        turn_id: turnId,
+        turn_index: turnIndex,
+        lane,
+        reason
+      });
+      if (turnId) {
+        patchEntrySessionTurn(turnId, {
+          status: "failed_controlled",
+          updated_at: nowIso()
+        });
+      }
+      if (sessionId) {
+        touchEntrySession(sessionId);
+      }
+      return;
+    }
     emitEvent(runId, "planner.completed", {
       step_id: stepId,
       session_id: sessionId,
@@ -6625,6 +8905,17 @@ function executeEntryTurnRun(runId, plan = {}) {
         symbol: item.symbol || null
       }))
     });
+    emitEvent(runId, "command.proposed", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane,
+      command: commandPlan.command,
+      args: commandPlan.args,
+      cwd: workspacePath,
+      status: "proposed"
+    });
     emitEvent(runId, "executor.started", {
       step_id: stepId,
       session_id: sessionId,
@@ -6638,10 +8929,49 @@ function executeEntryTurnRun(runId, plan = {}) {
       turn_id: turnId,
       lane,
       command: commandPlan.command,
-      args: commandPlan.args
+      args: commandPlan.args,
+      cwd: workspacePath,
+      shell: inferHostShellType()
+    });
+    const shellThinkingId = shortId("thk");
+    emitEvent(runId, "thinking.started", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane,
+      phase: "task_command",
+      thinking_id: shellThinkingId,
+      command: commandPlan.command,
+      status: "running"
+    });
+    const startedAt = nowIso();
+    emitEvent(runId, "command.started", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane,
+      command: commandPlan.command,
+      args: commandPlan.args,
+      cwd: workspacePath,
+      shell: inferHostShellType(),
+      started_at: startedAt,
+      startedAt,
+      status: "running"
+    });
+    emitEvent(runId, "thinking.completed", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane,
+      phase: "task_command",
+      thinking_id: shellThinkingId,
+      command: commandPlan.command,
+      status: "completed"
     });
 
-    const startedAt = nowIso();
     const result = runLocalCommand(commandPlan.command, commandPlan.args, 15000, {
       cwd: workspacePath,
       workspace_root: workspacePath,
@@ -6650,6 +8980,61 @@ function executeEntryTurnRun(runId, plan = {}) {
       shell: false
     });
     const completedAt = nowIso();
+    const commandArtifactRef = writeCommandExecutionArtifact(runId, {
+      taskId: `entry_shell_${String(turnId || "turn")}`,
+      stageIndex: 1,
+      command: [commandPlan.command, ...(Array.isArray(commandPlan.args) ? commandPlan.args : [])].join(" ").trim(),
+      cwd: result.cwd || workspacePath,
+      shell: result.shell || "direct_exec",
+      exitCode: result.status,
+      stdout: result.stdout || "",
+      stderr: result.stderr || result.error_message || "",
+      durationMs: Number(result.duration_ms || 0)
+    });
+    const stdoutRaw = String(result.stdout || "");
+    const stderrRaw = String(result.stderr || result.error_message || "");
+    if (stdoutRaw) {
+      const chunkSize = 1200;
+      const total = Math.max(1, Math.ceil(stdoutRaw.length / chunkSize));
+      for (let i = 0; i < total; i += 1) {
+        const chunk = stdoutRaw.slice(i * chunkSize, (i + 1) * chunkSize);
+        if (!chunk) continue;
+        emitEvent(runId, "command.stdout.chunk", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          lane,
+          command: commandPlan.command,
+          stream: "stdout",
+          chunk_index: i + 1,
+          chunk_total: total,
+          chunk,
+          status: "running"
+        });
+      }
+    }
+    if (stderrRaw) {
+      const chunkSize = 1200;
+      const total = Math.max(1, Math.ceil(stderrRaw.length / chunkSize));
+      for (let i = 0; i < total; i += 1) {
+        const chunk = stderrRaw.slice(i * chunkSize, (i + 1) * chunkSize);
+        if (!chunk) continue;
+        emitEvent(runId, "command.stderr.chunk", {
+          step_id: stepId,
+          session_id: sessionId,
+          turn_id: turnId,
+          turn_index: turnIndex,
+          lane,
+          command: commandPlan.command,
+          stream: "stderr",
+          chunk_index: i + 1,
+          chunk_total: total,
+          chunk,
+          status: "running"
+        });
+      }
+    }
     const adapterRow = recordAdapterRun({
       runId,
       adapterId: "shell",
@@ -6672,6 +9057,29 @@ function executeEntryTurnRun(runId, plan = {}) {
       ok: result.ok,
       exit_code: result.status,
       signal: result.signal || null
+    });
+    emitEvent(runId, "command.completed", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane,
+      command: commandPlan.command,
+      args: commandPlan.args,
+      cwd: result.cwd || workspacePath,
+      shell: result.shell || "direct_exec",
+      exit_code: result.status,
+      exitCode: result.status,
+      duration_ms: Number(result.duration_ms || 0),
+      durationMs: Number(result.duration_ms || 0),
+      started_at: startedAt,
+      startedAt,
+      finished_at: completedAt,
+      finishedAt: completedAt,
+      stdout: summarizeText(result.stdout, 1400),
+      stderr: summarizeText(result.stderr || result.error_message, 1400),
+      artifact_ref: commandArtifactRef,
+      status: result.ok ? "completed" : "failed"
     });
     emitEvent(runId, "executor.completed", {
       step_id: stepId,
@@ -6878,6 +9286,20 @@ function createEntryTurnRun({
     token_count: normalizedTokens.length
   });
 
+  emitAutoContextCompilation({
+    runId: id,
+    stepId: resolvedStepId,
+    sessionId: session.id,
+    triggerPhase: "run.start.pre_execute",
+    requestedBy: "create_entry_turn_run"
+  });
+  issueRunContextReceipt({
+    runId: id,
+    sessionId: session.id,
+    stepId: resolvedStepId,
+    consumer: "planner"
+  });
+
   let attachmentFailedCount = 0;
   for (const spec of attachmentSpecs) {
     const ingested = ingestAttachmentBufferForRun({
@@ -6954,6 +9376,203 @@ function isOpenAiByoBound(statusPayload) {
   return false;
 }
 
+const ENTRY_PREFLIGHT_PROBE_CACHE_TTL_MS = 5000;
+let entryPreflightProbeCache = {
+  key: "",
+  captured_at_ms: 0,
+  payload: null
+};
+
+function inferHostShellType() {
+  const shellEnv = String(process.env.SHELL || "").toLowerCase();
+  const comSpec = String(process.env.ComSpec || "").toLowerCase();
+  const psModulePath = String(process.env.PSModulePath || "").toLowerCase();
+  if (process.platform === "win32" && psModulePath) {
+    return "powershell";
+  }
+  if (/pwsh|powershell/.test(shellEnv) || /powershell|pwsh/.test(comSpec)) {
+    return "powershell";
+  }
+  if (/cmd\.exe/.test(comSpec)) {
+    return "cmd";
+  }
+  if (/bash/.test(shellEnv)) {
+    return "bash";
+  }
+  if (/zsh/.test(shellEnv)) {
+    return "zsh";
+  }
+  return process.platform === "win32" ? "powershell" : "sh";
+}
+
+function checkDirectoryWriteAccess(targetPath) {
+  const raw = typeof targetPath === "string" && targetPath.trim() ? targetPath.trim() : "";
+  if (!raw) {
+    return { ok: false, reason: "path_missing", checked_path: null };
+  }
+  const abs = path.resolve(raw);
+  if (!fs.existsSync(abs)) {
+    return { ok: false, reason: "path_not_found", checked_path: abs };
+  }
+  try {
+    fs.accessSync(abs, fs.constants.W_OK);
+    return { ok: true, reason: "writable", checked_path: abs };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: summarizeText(error instanceof Error ? error.message : "write_access_denied", 160) || "write_access_denied",
+      checked_path: abs
+    };
+  }
+}
+
+function detectPreferredPackageManager(workspacePath) {
+  const root = typeof workspacePath === "string" && workspacePath.trim() ? workspacePath.trim() : repoRoot;
+  const lockfiles = {
+    pnpm: fs.existsSync(path.join(root, "pnpm-lock.yaml")),
+    yarn: fs.existsSync(path.join(root, "yarn.lock")),
+    npm: fs.existsSync(path.join(root, "package-lock.json")),
+    bun: fs.existsSync(path.join(root, "bun.lockb")) || fs.existsSync(path.join(root, "bun.lock"))
+  };
+  if (lockfiles.pnpm) return { preferred: "pnpm", lockfiles };
+  if (lockfiles.yarn) return { preferred: "yarn", lockfiles };
+  if (lockfiles.bun) return { preferred: "bun", lockfiles };
+  if (lockfiles.npm) return { preferred: "npm", lockfiles };
+  return { preferred: "unknown", lockfiles };
+}
+
+function probeToolAvailability(command, args = ["--version"], timeoutMs = 1500) {
+  const exec = String(command || "").trim();
+  if (!exec) {
+    return { available: false, command: null, summary: "command_missing" };
+  }
+  const result = runLocalCommand(exec, Array.isArray(args) ? args : ["--version"], timeoutMs, {
+    cwd: repoRoot,
+    shell: false
+  });
+  return {
+    available: Boolean(result.ok),
+    command: exec,
+    summary: summarizeText(result.ok ? result.stdout || result.stderr || "ok" : result.error_message || result.stderr || "unavailable", 180),
+    exit_code: Number.isFinite(Number(result.status)) ? Number(result.status) : null
+  };
+}
+
+function collectEntryEnvironmentSignals({ workspacePath, byoStatus, access }) {
+  const wsRoot = typeof workspacePath === "string" && workspacePath.trim() ? workspacePath.trim() : repoRoot;
+  const packageManager = detectPreferredPackageManager(wsRoot);
+  const nodeProbe = probeToolAvailability("node", ["--version"], 1500);
+  const npmProbe = probeToolAvailability("npm", ["--version"], 1500);
+  const pnpmProbe = probeToolAvailability("pnpm", ["--version"], 1500);
+  const rgProbe = probeToolAvailability("rg", ["--version"], 1500);
+  const gitProbe = probeToolAvailability("git", ["--version"], 1500);
+  const pythonProbePrimary = probeToolAvailability("python", ["--version"], 1500);
+  const pythonProbeFallback =
+    !pythonProbePrimary.available && process.platform === "win32"
+      ? probeToolAvailability("py", ["--version"], 1500)
+      : null;
+  const pythonProbe = pythonProbePrimary.available ? pythonProbePrimary : pythonProbeFallback || pythonProbePrimary;
+  const shellType = inferHostShellType();
+  const repoWrite = checkDirectoryWriteAccess(repoRoot);
+  const wsWrite = checkDirectoryWriteAccess(wsRoot);
+  let networkReachable = false;
+  let networkReason = "node_probe_missing";
+  if (nodeProbe.available) {
+    const networkProbe = runLocalCommand(
+      "node",
+      [
+        "-e",
+        "const dns=require('dns');dns.lookup('api.openai.com',(err)=>{process.exit(err?2:0);});"
+      ],
+      2000,
+      { cwd: repoRoot, shell: false }
+    );
+    networkReachable = Boolean(networkProbe.ok);
+    networkReason = networkReachable
+      ? "dns_lookup_ok"
+      : summarizeText(networkProbe.error_message || networkProbe.stderr || "dns_lookup_failed", 160) || "dns_lookup_failed";
+  }
+  const bindingStatus = String(byoStatus?.binding?.status || "").toLowerCase();
+  const validationStatus = String(byoStatus?.validation?.validation_status || "").toLowerCase();
+  const openAiUsable = isOpenAiByoBound(byoStatus);
+  const wslLike = Boolean(process.env.WSL_DISTRO_NAME);
+  const linuxLike = process.platform === "linux";
+  const linuxDeps = linuxLike
+    ? {
+        xdg_open_available: probeToolAvailability("xdg-open", ["--help"], 3000).available
+      }
+    : null;
+  return {
+    captured_at: nowIso(),
+    cwd: process.cwd(),
+    repo_root: repoRoot,
+    workspace_root: wsRoot,
+    write_access: {
+      repo_root: repoWrite,
+      workspace_root: wsWrite
+    },
+    shell: {
+      platform: process.platform,
+      type: shellType,
+      wsl: wslLike,
+      comspec: process.env.ComSpec ? path.basename(String(process.env.ComSpec)) : null
+    },
+    toolchain: {
+      git: gitProbe,
+      node: nodeProbe,
+      npm: npmProbe,
+      pnpm: pnpmProbe,
+      python: pythonProbe,
+      rg: rgProbe
+    },
+    package_manager: packageManager,
+    runtime: {
+      sandbox: "host_local",
+      approval_policy: "runtime_policy_check",
+      network: {
+        reachable: networkReachable,
+        reason: networkReason
+      }
+    },
+    provider: {
+      openai: {
+        byo_bound: openAiUsable,
+        binding_status: bindingStatus || null,
+        validation_status: validationStatus || null,
+        usable: openAiUsable
+      }
+    },
+    linux_wsl_dependencies: {
+      checked: linuxLike || wslLike,
+      linux: linuxLike,
+      wsl: wslLike,
+      probes: linuxDeps
+    },
+    capability_auth: {
+      full_access_granted: Boolean(access?.full_access_granted)
+    }
+  };
+}
+
+function buildEntryEnvironmentSignalsCached({ workspacePath, byoStatus, access }) {
+  const key = `${String(workspacePath || "")}|${String(byoStatus?.binding?.status || "")}|${String(byoStatus?.validation?.validation_status || "")}|${access?.full_access_granted ? "1" : "0"}`;
+  const now = Date.now();
+  if (
+    entryPreflightProbeCache.payload &&
+    entryPreflightProbeCache.key === key &&
+    now - Number(entryPreflightProbeCache.captured_at_ms || 0) <= ENTRY_PREFLIGHT_PROBE_CACHE_TTL_MS
+  ) {
+    return entryPreflightProbeCache.payload;
+  }
+  const payload = collectEntryEnvironmentSignals({ workspacePath, byoStatus, access });
+  entryPreflightProbeCache = {
+    key,
+    captured_at_ms: now,
+    payload
+  };
+  return payload;
+}
+
 function buildEntryPreflightPayload() {
   const access = entryAccessStatusPayload();
   const byoStatus = buildByoStatusForProfile(BYO_DEFAULT_PROFILE_ID);
@@ -6963,6 +9582,11 @@ function buildEntryPreflightPayload() {
       ? currentWorkspace.workspace.workspace_path.trim()
       : null;
   const lastSession = selectedWorkspacePath ? latestEntrySession(selectedWorkspacePath) : null;
+  const environment = buildEntryEnvironmentSignalsCached({
+    workspacePath: selectedWorkspacePath || repoRoot,
+    byoStatus,
+    access
+  });
   return {
     host_connected: true,
     full_access_granted: access.full_access_granted,
@@ -6992,7 +9616,9 @@ function buildEntryPreflightPayload() {
       attachment: entryAttachmentContract.version,
       access: entryAccessContract.version,
       byo_openai: entryByoOpenAiContract.version
-    }
+    },
+    frontend_source: entryFrontendSource,
+    environment
   };
 }
 
@@ -7096,18 +9722,340 @@ function nextRunStatus(oldStatus, eventType) {
   return "running";
 }
 
-function emitEvent(runId, type, payload) {
+function eventStepIdFromPayload(payload) {
+  if (payload && typeof payload === "object" && typeof payload.step_id === "string" && payload.step_id.trim()) {
+    return payload.step_id.trim();
+  }
+  return null;
+}
+
+function inferRuntimeEventLane(type, payload, stepId = null) {
+  if (payload && typeof payload === "object" && typeof payload.lane === "string" && payload.lane.trim()) {
+    return payload.lane.trim();
+  }
+  const resolvedStepId = typeof stepId === "string" && stepId.trim() ? stepId.trim() : eventStepIdFromPayload(payload);
+  if (resolvedStepId) {
+    if (resolvedStepId.includes(".chat.")) return "chat";
+    if (resolvedStepId.includes(".task.")) return "task";
+  }
+  const eventType = String(type || "").toLowerCase();
+  if (eventType.startsWith("approval.") || eventType.startsWith("auth.")) {
+    return "approval";
+  }
+  if (
+    eventType.startsWith("command.") ||
+    eventType.startsWith("verify.") ||
+    eventType.startsWith("repair.") ||
+    eventType.startsWith("review.") ||
+    eventType.startsWith("acceptance.") ||
+    eventType.startsWith("deploy.") ||
+    eventType.startsWith("online.verification.") ||
+    eventType.startsWith("planner.") ||
+    eventType.startsWith("executor.") ||
+    eventType.startsWith("adapter.")
+  ) {
+    return "task";
+  }
+  if (eventType.startsWith("user.") || eventType.startsWith("assistant.")) {
+    return "chat";
+  }
+  return "system";
+}
+
+function inferRuntimeEventStatus(type, payload) {
+  if (payload && typeof payload === "object" && typeof payload.status === "string" && payload.status.trim()) {
+    return payload.status.trim();
+  }
+  const eventType = String(type || "").toLowerCase();
+  if (/(required|pending|waiting|prompted)/.test(eventType)) return "waiting_user";
+  if (/(started|requested|running|proposed|chunk)/.test(eventType)) return "running";
+  if (/(completed|verified|available|resumed|granted)/.test(eventType)) return "completed";
+  if (/(failed|rejected|timeout|cancelled|blocked|error)/.test(eventType)) return "failed";
+  return "unknown";
+}
+
+function inferRuntimeArtifactRef(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const keys = [
+    "artifact_ref",
+    "artifact_path",
+    "receipt_path",
+    "review_artifact_path",
+    "diff_artifact_path",
+    "stdout_artifact_path",
+    "stderr_artifact_path",
+    "replay_artifact_path",
+    "projection_artifact_path",
+    "evidence_path"
+  ];
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function runtimeFiniteNumberOrNull(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string" && !value.trim()) {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function runtimeFirstNonEmptyString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function runtimeIsoTimestampOrNull(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+  const ts = Date.parse(value.trim());
+  if (!Number.isFinite(ts)) {
+    return null;
+  }
+  return new Date(ts).toISOString();
+}
+
+function runtimeEventLooksLikeExecution(type = "") {
+  const eventType = String(type || "").toLowerCase();
+  return (
+    eventType.includes("command") ||
+    eventType.includes("verify") ||
+    eventType.includes("repair") ||
+    eventType.includes("acceptance") ||
+    eventType.includes("review")
+  );
+}
+
+function inferRuntimeEventPhase(type = "", payload = {}) {
+  const eventType = String(type || "").toLowerCase();
+  const explicitPhase = runtimeFirstNonEmptyString(payload?.phase);
+  if (explicitPhase) {
+    return explicitPhase;
+  }
+  if (eventType.includes("thinking")) return "thinking";
+  if (eventType.includes("plan")) return "plan";
+  if (eventType.includes("file.locate") || eventType.includes("file_locate")) return "file_locate";
+  if (eventType.includes("diff") || eventType.includes("patch")) return "patch";
+  if (eventType.includes("command")) return "command";
+  if (eventType.includes("verify")) return "verify";
+  if (eventType.includes("diagnosis")) return "diagnosis";
+  if (eventType.includes("repair")) return "repair";
+  if (eventType.includes("review")) return "review";
+  if (eventType.includes("acceptance")) return "acceptance";
+  if (eventType.includes("approval") || eventType.includes("auth")) return "approval";
+  if (eventType.includes("toolchain")) return "toolchain";
+  if (eventType.includes("deploy")) return "deploy";
+  if (eventType === "user.message" || eventType.includes("assistant")) return "chat";
+  return "system";
+}
+
+function runtimeEventTitle(type, payload = {}) {
+  const explicitTitle = runtimeFirstNonEmptyString(payload?.title);
+  if (explicitTitle) {
+    return explicitTitle;
+  }
+  const eventType = String(type || "").toLowerCase();
+  if (eventType.includes("thinking")) return "Thinking";
+  if (eventType.includes("verify")) return "Verify";
+  if (eventType.includes("repair")) return "Repair Loop";
+  if (eventType.includes("acceptance")) return "Acceptance";
+  if (eventType.includes("review")) return "Review";
+  if (eventType.includes("diff")) return "Diff";
+  if (eventType.includes("command")) return "Command";
+  if (eventType === "user.message") return "User";
+  if (eventType === "step.completed" && typeof payload?.message === "string" && payload.message.trim()) return "Assistant";
+  return String(type || "event");
+}
+
+function readRuntimeArtifactObject(artifactRef) {
+  const ref = String(artifactRef || "").trim();
+  if (!ref) {
+    return null;
+  }
+  const abs = resolveArtifactAbsolutePath(ref);
+  if (!abs || !fs.existsSync(abs)) {
+    return null;
+  }
+  try {
+    const text = fs.readFileSync(abs, "utf8");
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildRuntimeExecutionFields(type, payload = {}, eventTimestamp, artifactRef) {
+  const artifact = readRuntimeArtifactObject(artifactRef);
+  const command = runtimeFirstNonEmptyString(
+    payload?.command,
+    payload?.command_summary,
+    payload?.failed_command,
+    payload?.adjusted_command,
+    artifact?.command,
+    artifact?.command_summary,
+    artifact?.failed_command
+  );
+  const cwd = runtimeFirstNonEmptyString(payload?.cwd, payload?.adjusted_cwd, artifact?.cwd);
+  const shell = runtimeFirstNonEmptyString(payload?.shell, payload?.shell_type, artifact?.shell);
+  const stdout = runtimeFirstNonEmptyString(
+    payload?.stdout,
+    payload?.stdout_text,
+    payload?.stdout_summary,
+    artifact?.stdout,
+    artifact?.stdout_text,
+    artifact?.stdout_summary
+  );
+  const stderr = runtimeFirstNonEmptyString(
+    payload?.stderr,
+    payload?.stderr_text,
+    payload?.stderr_summary,
+    payload?.failure_summary,
+    artifact?.stderr,
+    artifact?.stderr_text,
+    artifact?.stderr_summary
+  );
+  const exitCode =
+    runtimeFiniteNumberOrNull(payload?.exit_code) ??
+    runtimeFiniteNumberOrNull(payload?.exitCode) ??
+    runtimeFiniteNumberOrNull(artifact?.exit_code) ??
+    runtimeFiniteNumberOrNull(artifact?.exitCode);
+  const durationMs =
+    runtimeFiniteNumberOrNull(payload?.duration_ms) ??
+    runtimeFiniteNumberOrNull(payload?.durationMs) ??
+    runtimeFiniteNumberOrNull(artifact?.duration_ms) ??
+    runtimeFiniteNumberOrNull(artifact?.durationMs);
+
+  const startedAt =
+    runtimeIsoTimestampOrNull(payload?.started_at) ||
+    runtimeIsoTimestampOrNull(payload?.startedAt) ||
+    runtimeIsoTimestampOrNull(artifact?.started_at) ||
+    runtimeIsoTimestampOrNull(artifact?.startedAt) ||
+    (/(started|requested|proposed)$/.test(String(type || "").toLowerCase()) ? runtimeIsoTimestampOrNull(eventTimestamp) : null);
+
+  const finishedAt =
+    runtimeIsoTimestampOrNull(payload?.finished_at) ||
+    runtimeIsoTimestampOrNull(payload?.finishedAt) ||
+    runtimeIsoTimestampOrNull(payload?.completed_at) ||
+    runtimeIsoTimestampOrNull(payload?.completedAt) ||
+    runtimeIsoTimestampOrNull(artifact?.finished_at) ||
+    runtimeIsoTimestampOrNull(artifact?.finishedAt) ||
+    runtimeIsoTimestampOrNull(artifact?.completed_at) ||
+    runtimeIsoTimestampOrNull(artifact?.completedAt) ||
+    (/(completed|failed|passed|cancelled|rejected)$/.test(String(type || "").toLowerCase()) ? runtimeIsoTimestampOrNull(eventTimestamp) : null);
+
+  let computedDurationMs = durationMs;
+  if (computedDurationMs === null && startedAt && finishedAt) {
+    const startMs = Date.parse(startedAt);
+    const finishMs = Date.parse(finishedAt);
+    if (Number.isFinite(startMs) && Number.isFinite(finishMs) && finishMs >= startMs) {
+      computedDurationMs = finishMs - startMs;
+    }
+  }
+
+  return {
+    command,
+    cwd,
+    shell,
+    stdout,
+    stderr,
+    exitCode,
+    startedAt,
+    finishedAt,
+    durationMs: computedDurationMs
+  };
+}
+
+function enrichRuntimeEventForApi(eventEnvelope) {
+  if (!eventEnvelope || typeof eventEnvelope !== "object") {
+    return eventEnvelope;
+  }
+  const payload = eventEnvelope.payload && typeof eventEnvelope.payload === "object" ? eventEnvelope.payload : {};
+  const type = String(eventEnvelope.type || eventEnvelope.kind || "");
+  const artifactRef = inferRuntimeArtifactRef(payload) || eventEnvelope.artifact_ref || null;
+  const hasExecutionSignal = runtimeEventLooksLikeExecution(type);
+  const execution = hasExecutionSignal
+    ? buildRuntimeExecutionFields(type, payload, eventEnvelope.timestamp || eventEnvelope.ts || null, artifactRef)
+    : {
+        command: "",
+        cwd: "",
+        shell: "",
+        stdout: "",
+        stderr: "",
+        exitCode: null,
+        startedAt: null,
+        finishedAt: null,
+        durationMs: null
+      };
+  return {
+    ...eventEnvelope,
+    id: eventEnvelope.event_id,
+    title: runtimeEventTitle(type, payload),
+    command: hasExecutionSignal ? execution.command : "",
+    cwd: hasExecutionSignal ? execution.cwd : "",
+    shell: hasExecutionSignal ? execution.shell : "",
+    stdout: hasExecutionSignal ? execution.stdout : "",
+    stderr: hasExecutionSignal ? execution.stderr : "",
+    exitCode: hasExecutionSignal ? execution.exitCode : null,
+    startedAt: hasExecutionSignal ? execution.startedAt : null,
+    finishedAt: hasExecutionSignal ? execution.finishedAt : null,
+    durationMs: hasExecutionSignal ? execution.durationMs : null
+  };
+}
+
+function buildRuntimeEventEnvelope(runId, seq, type, timestamp, payload) {
+  const stepId = eventStepIdFromPayload(payload);
+  return {
+    event_id: `evt_${runId}_${seq}`,
+    run_id: runId,
+    step_id: stepId,
+    kind: type,
+    lane: inferRuntimeEventLane(type, payload, stepId),
+    phase: inferRuntimeEventPhase(type, payload),
+    timestamp,
+    artifact_ref: inferRuntimeArtifactRef(payload),
+    status: inferRuntimeEventStatus(type, payload),
+    seq,
+    type,
+    ts: timestamp,
+    payload
+  };
+}
+
+function approvalMirrorEventType(type, payload = {}) {
+  const eventType = String(type || "");
+  if (eventType === "auth.required") return "approval.required";
+  if (eventType === "auth.challenge.emitted" || eventType === "auth.browser_opened" || eventType === "auth.command_rendered" || eventType === "auth.input_requested") {
+    return "approval.prompted";
+  }
+  if (eventType === "auth.waiting_user" || eventType === "auth.pending_user_action") return "approval.waiting_user";
+  if (eventType === "auth.dialog_closed_unconfirmed") return "approval.dialog_closed_unconfirmed";
+  if (eventType === "auth.failed" && payload.retryable === true) return "approval.retryable";
+  if (eventType === "auth.verified") return "approval.verified";
+  if (eventType === "auth.resumed_original_run") return "approval.resumed_original_run";
+  return null;
+}
+
+function emitEvent(runId, type, payload, options = {}) {
   const now = nowIso();
   const nextSeq = dbGet("SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM events WHERE run_id = ?", runId).n;
   const frontendCheck = validateFrontendContractPayload(type, payload);
-  const eventEnvelope = {
-    event_id: `evt_${runId}_${nextSeq}`,
-    run_id: runId,
-    seq: nextSeq,
-    type,
-    ts: now,
-    payload
-  };
+  const eventEnvelope = buildRuntimeEventEnvelope(runId, nextSeq, type, now, payload);
   if (frontendCheck.covered) {
     eventEnvelope.frontend_contract = {
       version: frontendEventContract.version,
@@ -7155,26 +10103,93 @@ function emitEvent(runId, type, payload) {
   } catch (error) {
     console.error(`[agent-host] workspace_binding_hook_error: ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (type === "step.requested") {
+  if (!disableAutoContextAssemble) {
     try {
-      maybeAssembleAutoContextForStep(runId, payload);
+      maybeCompileAutoContextForEvent(runId, type, payload);
     } catch (error) {
       console.error(`[agent-host] autocontext_assemble_error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  try {
-    maybeAutoCompactRun(runId, type);
-  } catch (error) {
-    console.error(`[agent-host] auto_compact_error: ${error instanceof Error ? error.message : String(error)}`);
+  if (!disableAutoCompact) {
+    try {
+      maybeAutoCompactRun(runId, type, payload);
+    } catch (error) {
+      console.error(`[agent-host] auto_compact_error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (!disableAutoCompact) {
+    try {
+      if (
+        type === "command.completed" ||
+        type === "verify.completed" ||
+        type === "verify.passed" ||
+        type === "verify.failed" ||
+        type === "repair.completed" ||
+        type === "acceptance.completed" ||
+        type === "step.completed"
+      ) {
+        flushPendingContextCompactionIfSafe(runId, type, payload);
+      }
+    } catch (error) {
+      console.error(`[agent-host] auto_compact_queue_error: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   const frame = `data: ${JSON.stringify(eventEnvelope)}\n\n`;
   for (const client of sseClients) {
+    const clientRunId = sseClientRunId(client);
+    if (clientRunId && clientRunId !== String(runId || "")) {
+      continue;
+    }
+    const res = sseClientResponse(client);
+    if (!res) {
+      sseClients.delete(client);
+      continue;
+    }
     try {
-      client.write(frame);
+      res.write(frame);
     } catch {
       sseClients.delete(client);
+    }
+  }
+
+  if (!options || options.skip_mirror !== true) {
+    if (type === "step.requested") {
+      emitEvent(
+        runId,
+        "step.started",
+        {
+          ...(payload && typeof payload === "object" ? payload : {}),
+          status: "running"
+        },
+        { skip_mirror: true }
+      );
+    }
+    const mirrorType = approvalMirrorEventType(type, payload);
+    if (mirrorType) {
+      emitEvent(
+        runId,
+        mirrorType,
+        {
+          ...(payload && typeof payload === "object" ? payload : {}),
+          kind: mirrorType,
+          status: inferRuntimeEventStatus(mirrorType, payload || {})
+        },
+        { skip_mirror: true }
+      );
+      if (mirrorType === "approval.resumed_original_run") {
+        emitEvent(
+          runId,
+          "approval.resumed",
+          {
+            ...(payload && typeof payload === "object" ? payload : {}),
+            status: "completed"
+          },
+          { skip_mirror: true }
+        );
+      }
     }
   }
 
@@ -7294,7 +10309,18 @@ function recordBoundaryCheck({
 function isForbiddenFilePath(targetPath) {
   const target = normalizeFsPath(targetPath).toLowerCase();
   for (const forbidden of fileAdapterContract?.forbidden_paths || []) {
-    const f = normalizeFsPath(forbidden).toLowerCase();
+    const raw = String(forbidden || "").trim();
+    if (!raw) {
+      continue;
+    }
+    // Windows host should not treat POSIX root aliases as global drive-root deny.
+    if (process.platform === "win32" && /^\/(?:etc|usr|var)?$/.test(raw)) {
+      continue;
+    }
+    const f = normalizeFsPath(raw).toLowerCase();
+    if (!f) {
+      continue;
+    }
     if (target === f || target.startsWith(`${f}/`)) {
       return true;
     }
@@ -9224,6 +12250,1021 @@ function recordContextProjection({
     createdAt || nowIso()
   );
   return dbGet("SELECT * FROM context_projections WHERE id = ?", id);
+}
+
+function contextSettingDefaults() {
+  return {
+    auto_compact_after_task_lane: 1,
+    auto_compact_enabled: 1,
+    event_threshold: Math.max(8, parsePositiveInt(compactPolicyContract?.event_count_threshold, 120)),
+    token_threshold: 12000,
+    stdout_stderr_threshold: 12000,
+    artifacts_threshold: 24,
+    repair_round_threshold: 2
+  };
+}
+
+function normalizeContextSettingPatch(input = {}) {
+  const defaults = contextSettingDefaults();
+  const boolField = (key, fallback) => (Object.prototype.hasOwnProperty.call(input, key) ? (input[key] ? 1 : 0) : fallback);
+  const intField = (key, fallback, min = 1, max = 2000000) => {
+    if (!Object.prototype.hasOwnProperty.call(input, key)) return fallback;
+    const parsed = Number(input[key]);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(min, Math.min(max, Math.floor(parsed)));
+  };
+  return {
+    auto_compact_after_task_lane: boolField("auto_compact_after_task_lane", defaults.auto_compact_after_task_lane),
+    auto_compact_enabled: boolField("auto_compact_enabled", defaults.auto_compact_enabled),
+    event_threshold: intField("event_threshold", defaults.event_threshold, 4, 200000),
+    token_threshold: intField("token_threshold", defaults.token_threshold, 100, 2000000),
+    stdout_stderr_threshold: intField("stdout_stderr_threshold", defaults.stdout_stderr_threshold, 100, 2000000),
+    artifacts_threshold: intField("artifacts_threshold", defaults.artifacts_threshold, 1, 200000),
+    repair_round_threshold: intField("repair_round_threshold", defaults.repair_round_threshold, 1, 256)
+  };
+}
+
+function ensureContextSettingsRow(sessionId, source = DEFAULT_CONTEXT_SETTING_SOURCE) {
+  const sid = String(sessionId || "").trim();
+  if (!sid) {
+    return null;
+  }
+  const existing = dbGet("SELECT * FROM context_settings WHERE session_id = ? LIMIT 1", sid);
+  if (existing) {
+    return existing;
+  }
+  const defaults = contextSettingDefaults();
+  const ts = nowIso();
+  const id = shortId("ctxset");
+  dbRun(
+    `INSERT INTO context_settings (
+      id, session_id, auto_compact_after_task_lane, auto_compact_enabled,
+      event_threshold, token_threshold, stdout_stderr_threshold, artifacts_threshold, repair_round_threshold,
+      status, source, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+    id,
+    sid,
+    defaults.auto_compact_after_task_lane,
+    defaults.auto_compact_enabled,
+    defaults.event_threshold,
+    defaults.token_threshold,
+    defaults.stdout_stderr_threshold,
+    defaults.artifacts_threshold,
+    defaults.repair_round_threshold,
+    summarizeText(source || DEFAULT_CONTEXT_SETTING_SOURCE, 120),
+    ts,
+    ts
+  );
+  return dbGet("SELECT * FROM context_settings WHERE id = ?", id);
+}
+
+function readContextSettings(sessionId) {
+  const sid = String(sessionId || "").trim();
+  if (!sid) {
+    return null;
+  }
+  return ensureContextSettingsRow(sid);
+}
+
+function patchContextSettings(sessionId, patch = {}, source = "context_settings_update") {
+  const sid = String(sessionId || "").trim();
+  if (!sid) {
+    return null;
+  }
+  const row = ensureContextSettingsRow(sid, source);
+  if (!row) {
+    return null;
+  }
+  const normalized = normalizeContextSettingPatch(patch);
+  const ts = nowIso();
+  dbRun(
+    `UPDATE context_settings
+       SET auto_compact_after_task_lane = ?,
+           auto_compact_enabled = ?,
+           event_threshold = ?,
+           token_threshold = ?,
+           stdout_stderr_threshold = ?,
+           artifacts_threshold = ?,
+           repair_round_threshold = ?,
+           source = ?,
+           updated_at = ?
+     WHERE session_id = ?`,
+    normalized.auto_compact_after_task_lane,
+    normalized.auto_compact_enabled,
+    normalized.event_threshold,
+    normalized.token_threshold,
+    normalized.stdout_stderr_threshold,
+    normalized.artifacts_threshold,
+    normalized.repair_round_threshold,
+    summarizeText(source || "context_settings_update", 120),
+    ts,
+    sid
+  );
+  return dbGet("SELECT * FROM context_settings WHERE session_id = ? LIMIT 1", sid);
+}
+
+function patchContextSettingsCompactStatus(sessionId, patch = {}) {
+  const sid = String(sessionId || "").trim();
+  if (!sid) {
+    return null;
+  }
+  const row = ensureContextSettingsRow(sid);
+  if (!row) {
+    return null;
+  }
+  const allowed = ["last_compact_status", "last_snapshot_id", "last_compact_reason", "last_compacted_at"];
+  const keys = Object.keys(patch || {}).filter((key) => allowed.includes(key));
+  if (keys.length === 0) {
+    return row;
+  }
+  const assigns = keys.map((key) => `${key} = ?`).join(", ");
+  const args = keys.map((key) => patch[key]);
+  args.push(nowIso(), sid);
+  dbRun(`UPDATE context_settings SET ${assigns}, updated_at = ? WHERE session_id = ?`, ...args);
+  return dbGet("SELECT * FROM context_settings WHERE session_id = ? LIMIT 1", sid);
+}
+
+function resolveSessionIdForRun(runId, fallbackSessionId = null) {
+  const fallback = typeof fallbackSessionId === "string" && fallbackSessionId.trim() ? fallbackSessionId.trim() : null;
+  if (!runId) {
+    return fallback;
+  }
+  const turnHit = dbGet(
+    "SELECT session_id FROM entry_session_turns WHERE run_id = ? ORDER BY created_at DESC LIMIT 1",
+    runId
+  );
+  if (turnHit?.session_id) {
+    return String(turnHit.session_id);
+  }
+  const eventHit = dbGet(
+    `SELECT payload_json FROM events
+     WHERE run_id = ?
+       AND type IN ('step.requested','run.created','user.message')
+     ORDER BY seq DESC LIMIT 1`,
+    runId
+  );
+  if (eventHit?.payload_json) {
+    const payload = parsePayloadJson(eventHit.payload_json);
+    if (typeof payload?.session_id === "string" && payload.session_id.trim()) {
+      return payload.session_id.trim();
+    }
+  }
+  return fallback;
+}
+
+function latestRunIdForSession(sessionId) {
+  const sid = String(sessionId || "").trim();
+  if (!sid) {
+    return null;
+  }
+  const turn = dbGet(
+    "SELECT run_id FROM entry_session_turns WHERE session_id = ? ORDER BY created_at DESC LIMIT 1",
+    sid
+  );
+  if (turn?.run_id) {
+    return String(turn.run_id);
+  }
+  const session = dbGet("SELECT run_id FROM entry_sessions WHERE id = ? LIMIT 1", sid);
+  return session?.run_id ? String(session.run_id) : null;
+}
+
+function recordAutoContextCompilation({
+  sessionId,
+  runId,
+  stepId,
+  triggerPhase,
+  contextJson,
+  contextHash,
+  artifactPath,
+  redactionJson,
+  staleGuardJson,
+  status,
+  errorCode,
+  errorMessage
+}) {
+  const id = shortId("actx");
+  dbRun(
+    `INSERT INTO autocontext_compilations (
+      id, session_id, run_id, step_id, trigger_phase, created_at, context_json, context_hash,
+      artifact_path, redaction_json, stale_guard_json, status, error_code, error_message
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id,
+    sessionId || null,
+    runId,
+    stepId || null,
+    summarizeText(triggerPhase || "unknown_phase", 160),
+    nowIso(),
+    contextJson || "{}",
+    contextHash || textHash(contextJson || "{}"),
+    artifactPath,
+    redactionJson || "{}",
+    staleGuardJson || "{}",
+    status || "completed",
+    errorCode || null,
+    errorMessage || null
+  );
+  return dbGet("SELECT * FROM autocontext_compilations WHERE id = ?", id);
+}
+
+function latestAutoContextCompilation(runId) {
+  return dbGet(
+    "SELECT * FROM autocontext_compilations WHERE run_id = ? AND status = 'completed' ORDER BY created_at DESC LIMIT 1",
+    runId
+  );
+}
+
+function recordContextSnapshot({
+  snapshotId,
+  sessionId,
+  runId,
+  sourceFromSeq,
+  sourceToSeq,
+  snapshotJson,
+  tokenEstimateBefore,
+  tokenEstimateAfter,
+  status,
+  reason,
+  qualityJson,
+  idempotencyKey,
+  artifactPath
+}) {
+  const id = snapshotId && String(snapshotId).trim() ? String(snapshotId).trim() : shortId("ctxsnap");
+  dbRun(
+    `INSERT INTO context_snapshots (
+      id, session_id, run_id, created_at, source_from_seq, source_to_seq, snapshot_json,
+      token_estimate_before, token_estimate_after, status, reason, quality_json, idempotency_key, artifact_path
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id,
+    sessionId,
+    runId || null,
+    nowIso(),
+    Number.isFinite(Number(sourceFromSeq)) ? Number(sourceFromSeq) : 1,
+    Number.isFinite(Number(sourceToSeq)) ? Number(sourceToSeq) : 0,
+    snapshotJson || "{}",
+    Number.isFinite(Number(tokenEstimateBefore)) ? Number(tokenEstimateBefore) : 0,
+    Number.isFinite(Number(tokenEstimateAfter)) ? Number(tokenEstimateAfter) : 0,
+    status || "completed",
+    summarizeText(reason || "", 300) || null,
+    qualityJson || "{}",
+    idempotencyKey,
+    artifactPath
+  );
+  return dbGet("SELECT * FROM context_snapshots WHERE id = ?", id);
+}
+
+function latestContextSnapshotForSession(sessionId) {
+  return dbGet(
+    "SELECT * FROM context_snapshots WHERE session_id = ? AND status = 'completed' ORDER BY created_at DESC LIMIT 1",
+    sessionId
+  );
+}
+
+function contextSnapshotSourceToSeqForRun(snapshotRow, runId) {
+  if (!snapshotRow) {
+    return 0;
+  }
+  const snapshotRunId = String(snapshotRow.run_id || "").trim();
+  const normalizedRunId = String(runId || "").trim();
+  if (!snapshotRunId || !normalizedRunId || snapshotRunId !== normalizedRunId) {
+    return 0;
+  }
+  const parsed = Number(snapshotRow.source_to_seq || 0);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 0;
+  }
+  return Math.floor(parsed);
+}
+
+function recordContextCompaction({
+  sessionId,
+  runId,
+  status,
+  reason,
+  snapshotId,
+  errorCode,
+  errorMessage,
+  idempotencyKey,
+  sourceFromSeq,
+  sourceToSeq,
+  artifactPath,
+  timeoutMs,
+  triggerType
+}) {
+  const id = shortId("ctxcmp");
+  dbRun(
+    `INSERT INTO context_compactions (
+      id, session_id, run_id, started_at, completed_at, status, reason, snapshot_id, error_code, error_message,
+      idempotency_key, source_from_seq, source_to_seq, artifact_path, timeout_ms, trigger_type
+    ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id,
+    sessionId,
+    runId || null,
+    nowIso(),
+    status || "started",
+    summarizeText(reason || "", 300) || null,
+    snapshotId || null,
+    errorCode || null,
+    errorMessage || null,
+    idempotencyKey,
+    Number.isFinite(Number(sourceFromSeq)) ? Number(sourceFromSeq) : null,
+    Number.isFinite(Number(sourceToSeq)) ? Number(sourceToSeq) : null,
+    artifactPath || null,
+    Number.isFinite(Number(timeoutMs)) ? Number(timeoutMs) : null,
+    summarizeText(triggerType || "manual", 120)
+  );
+  return dbGet("SELECT * FROM context_compactions WHERE id = ?", id);
+}
+
+function patchContextCompaction(compactionId, patch = {}) {
+  const allowed = [
+    "completed_at",
+    "status",
+    "reason",
+    "snapshot_id",
+    "error_code",
+    "error_message",
+    "source_from_seq",
+    "source_to_seq",
+    "artifact_path",
+    "timeout_ms",
+    "trigger_type"
+  ];
+  const keys = Object.keys(patch || {}).filter((key) => allowed.includes(key));
+  if (keys.length === 0) {
+    return null;
+  }
+  const assigns = keys.map((key) => `${key} = ?`).join(", ");
+  const args = keys.map((key) => patch[key]);
+  args.push(compactionId);
+  dbRun(`UPDATE context_compactions SET ${assigns} WHERE id = ?`, ...args);
+  return dbGet("SELECT * FROM context_compactions WHERE id = ?", compactionId);
+}
+
+function recordRunContextReceipt({
+  runId,
+  sessionId,
+  autocontextId,
+  snapshotId,
+  contextSourcesJson,
+  deltaEventsIncluded,
+  rawHistoryPrunedFromModelInput,
+  redactionJson,
+  staleGuardJson,
+  latestUserRequest,
+  activeTaskScope,
+  receiptArtifactPath,
+  status
+}) {
+  const id = shortId("ctxrcpt");
+  dbRun(
+    `INSERT INTO run_context_receipts (
+      id, run_id, session_id, autocontext_id, snapshot_id, consumed_at, context_sources_json, delta_events_included,
+      raw_history_pruned_from_model_input, redaction_json, stale_guard_json, latest_user_request, active_task_scope,
+      receipt_artifact_path, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id,
+    runId,
+    sessionId || null,
+    autocontextId || null,
+    snapshotId || null,
+    nowIso(),
+    contextSourcesJson || "[]",
+    Number.isFinite(Number(deltaEventsIncluded)) ? Number(deltaEventsIncluded) : 0,
+    rawHistoryPrunedFromModelInput ? 1 : 0,
+    redactionJson || "{}",
+    staleGuardJson || "{}",
+    summarizeText(latestUserRequest || "", 2000) || null,
+    summarizeText(activeTaskScope || "", 1000) || null,
+    receiptArtifactPath,
+    status || "available"
+  );
+  return dbGet("SELECT * FROM run_context_receipts WHERE id = ?", id);
+}
+
+function latestRunContextReceipt(runId) {
+  return dbGet(
+    "SELECT * FROM run_context_receipts WHERE run_id = ? ORDER BY consumed_at DESC LIMIT 1",
+    runId
+  );
+}
+
+function looksLikeSecretFieldName(key) {
+  return /(api[_-]?key|token|secret|password|authorization|auth|cookie|credential|private_key|bearer)/i.test(
+    String(key || "")
+  );
+}
+
+function looksLikeSecretValue(value) {
+  const text = String(value || "");
+  if (!text.trim()) return false;
+  if (/sk-[a-z0-9_-]{16,}/i.test(text)) return true;
+  if (/bearer\s+[a-z0-9._-]{12,}/i.test(text)) return true;
+  if (/[A-Za-z0-9+/_-]{32,}\.[A-Za-z0-9+/_-]{16,}\.[A-Za-z0-9+/_-]{16,}/.test(text)) return true;
+  if (/ghp_[a-z0-9]{20,}/i.test(text)) return true;
+  if (/xox[baprs]-[a-z0-9-]{20,}/i.test(text)) return true;
+  return false;
+}
+
+function redactSecrets(input, pathPrefix = "$", stats = { redacted_fields: [] }) {
+  if (Array.isArray(input)) {
+    return input.map((item, index) => redactSecrets(item, `${pathPrefix}[${index}]`, stats));
+  }
+  if (!input || typeof input !== "object") {
+    if (typeof input === "string" && looksLikeSecretValue(input)) {
+      stats.redacted_fields.push(pathPrefix);
+      return "[REDACTED]";
+    }
+    return input;
+  }
+  const out = {};
+  for (const [rawKey, rawValue] of Object.entries(input)) {
+    const key = String(rawKey || "");
+    const nextPath = `${pathPrefix}.${key}`;
+    if (looksLikeSecretFieldName(key)) {
+      stats.redacted_fields.push(nextPath);
+      out[key] = "[REDACTED]";
+      continue;
+    }
+    if (typeof rawValue === "string" && looksLikeSecretValue(rawValue)) {
+      stats.redacted_fields.push(nextPath);
+      out[key] = "[REDACTED]";
+      continue;
+    }
+    out[key] = redactSecrets(rawValue, nextPath, stats);
+  }
+  return out;
+}
+
+function safeParseJsonText(rawText, fallback = {}) {
+  try {
+    return JSON.parse(String(rawText || ""));
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeJsonField(rawJson, fallback) {
+  if (typeof rawJson !== "string" || !rawJson.trim()) {
+    return fallback;
+  }
+  return safeParseJsonText(rawJson, fallback);
+}
+
+function latestUserRequestForRun(runId) {
+  const row = dbGet(
+    "SELECT payload_json FROM events WHERE run_id = ? AND type = 'user.message' ORDER BY seq DESC LIMIT 1",
+    runId
+  );
+  if (!row?.payload_json) return "";
+  const payload = parsePayloadJson(row.payload_json);
+  return summarizeText(
+    String(payload?.raw_text || payload?.message || payload?.prompt || payload?.prompt_text || ""),
+    4000
+  );
+}
+
+function activeTaskScopeForRun(runId) {
+  const turn = dbGet(
+    `SELECT lane, prompt_summary FROM entry_session_turns
+     WHERE run_id = ?
+     ORDER BY created_at DESC LIMIT 1`,
+    runId
+  );
+  if (turn?.prompt_summary) {
+    return summarizeText(`${String(turn.lane || "task")} scope: ${String(turn.prompt_summary)}`, 2000);
+  }
+  const requested = dbGet(
+    "SELECT payload_json FROM events WHERE run_id = ? AND type = 'step.requested' ORDER BY seq DESC LIMIT 1",
+    runId
+  );
+  if (!requested?.payload_json) return "";
+  const payload = parsePayloadJson(requested.payload_json);
+  const taskType = summarizeText(String(payload?.task_type || payload?.lane || "task"), 160);
+  const stepId = summarizeText(String(payload?.step_id || ""), 260);
+  return summarizeText(`task_type=${taskType}; step_id=${stepId}`, 2000);
+}
+
+function estimateTokenCountFromText(text) {
+  return Math.max(1, Math.ceil(Buffer.byteLength(String(text || ""), "utf8") / 4));
+}
+
+function estimateTokenCountForRunRange(runId, fromSeq = 1, toSeq = null) {
+  const maxSeq = Number(
+    dbGet("SELECT COALESCE(MAX(seq), 0) AS n FROM events WHERE run_id = ?", runId)?.n || 0
+  );
+  const endSeq = Number.isFinite(Number(toSeq)) ? Number(toSeq) : maxSeq;
+  const rows = dbAll(
+    "SELECT payload_json FROM events WHERE run_id = ? AND seq >= ? AND seq <= ? ORDER BY seq ASC",
+    runId,
+    Number.isFinite(Number(fromSeq)) ? Number(fromSeq) : 1,
+    endSeq
+  );
+  let totalBytes = 0;
+  for (const row of rows) {
+    totalBytes += Buffer.byteLength(String(row?.payload_json || ""), "utf8");
+  }
+  return Math.max(1, Math.ceil(totalBytes / 4));
+}
+
+function listCommandsRunForRun(runId, limit = 40) {
+  const rows = dbAll(
+    "SELECT payload_json, created_at FROM events WHERE run_id = ? AND type = 'command.completed' ORDER BY seq DESC LIMIT ?",
+    runId,
+    Math.max(1, Math.min(200, Number(limit) || 40))
+  );
+  return rows
+    .map((row) => {
+      const payload = parsePayloadJson(row.payload_json);
+      return {
+        at: row.created_at,
+        command: summarizeText(String(payload?.command || payload?.command_summary || ""), 280),
+        exit_code: Number.isFinite(Number(payload?.exit_code)) ? Number(payload.exit_code) : null
+      };
+    })
+    .filter((x) => x.command)
+    .reverse();
+}
+
+function listFilesReferencedForRun(runId, limit = 80) {
+  const targetRows = dbAll(
+    "SELECT payload_json FROM events WHERE run_id = ? AND type = 'entry.task.file.locate.completed' ORDER BY seq DESC LIMIT 1",
+    runId
+  );
+  const out = [];
+  for (const row of targetRows) {
+    const payload = parsePayloadJson(row.payload_json);
+    for (const item of Array.isArray(payload?.target_files) ? payload.target_files : []) {
+      const normalized = summarizeText(String(item || ""), 400);
+      if (normalized && !out.includes(normalized)) {
+        out.push(normalized);
+      }
+    }
+  }
+  const touched = dbAll("SELECT path FROM file_changes WHERE run_id = ? ORDER BY created_at DESC LIMIT ?", runId, Math.max(1, limit));
+  for (const row of touched) {
+    const normalized = summarizeText(String(row?.path || ""), 400);
+    if (normalized && !out.includes(normalized)) {
+      out.push(normalized);
+    }
+  }
+  return out.slice(0, limit);
+}
+
+function listFilesTouchedForRun(runId, limit = 80) {
+  const touched = dbAll("SELECT path FROM file_changes WHERE run_id = ? ORDER BY created_at DESC LIMIT ?", runId, Math.max(1, limit));
+  return touched
+    .map((row) => summarizeText(String(row?.path || ""), 400))
+    .filter(Boolean);
+}
+
+function summarizeVerifyStatus(runId) {
+  const latestVerify = dbGet(
+    "SELECT * FROM verify_runs WHERE run_id = ? ORDER BY created_at DESC LIMIT 1",
+    runId
+  );
+  if (!latestVerify) {
+    return {
+      status: "unknown",
+      verify_run_id: null,
+      exit_code: null,
+      failure_summary: null
+    };
+  }
+  return {
+    status: summarizeText(String(latestVerify.status || "unknown"), 80),
+    verify_run_id: latestVerify.id,
+    exit_code: Number.isFinite(Number(latestVerify.exit_code)) ? Number(latestVerify.exit_code) : null,
+    failure_summary: summarizeText(String(latestVerify.failure_summary || ""), 320) || null
+  };
+}
+
+function summarizeRepairLoopStatus(runId) {
+  const rounds = Number(dbGet("SELECT COUNT(1) AS n FROM events WHERE run_id = ? AND type = 'repair.started'", runId)?.n || 0);
+  const completed = Number(
+    dbGet("SELECT COUNT(1) AS n FROM events WHERE run_id = ? AND type = 'repair.completed'", runId)?.n || 0
+  );
+  return {
+    rounds_started: rounds,
+    rounds_completed: completed,
+    in_progress: rounds > completed
+  };
+}
+
+function summarizeToolchainStatus(runId) {
+  const missingCount = Number(
+    dbGet("SELECT COUNT(1) AS n FROM events WHERE run_id = ? AND type = 'toolchain.missing'", runId)?.n || 0
+  );
+  const installRunning = Number(
+    dbGet("SELECT COUNT(1) AS n FROM events WHERE run_id = ? AND type = 'tool.install.started'", runId)?.n || 0
+  );
+  const installCompleted = Number(
+    dbGet("SELECT COUNT(1) AS n FROM events WHERE run_id = ? AND type = 'tool.install.completed'", runId)?.n || 0
+  );
+  return {
+    missing_count: missingCount,
+    install_in_progress: installRunning > installCompleted,
+    install_completed_count: installCompleted
+  };
+}
+
+function summarizeDeployAuthorizationStatus(runId) {
+  const waiting = Number(
+    dbGet("SELECT COUNT(1) AS n FROM events WHERE run_id = ? AND type = 'deploy.authorization.required'", runId)?.n || 0
+  );
+  const deployStarted = Number(
+    dbGet("SELECT COUNT(1) AS n FROM events WHERE run_id = ? AND type = 'deploy.command.started'", runId)?.n || 0
+  );
+  const deployCompleted = Number(
+    dbGet("SELECT COUNT(1) AS n FROM events WHERE run_id = ? AND type = 'deploy.command.completed'", runId)?.n || 0
+  );
+  return {
+    waiting_for_authorization: waiting > 0 && deployStarted <= deployCompleted,
+    deploy_running: deployStarted > deployCompleted,
+    deploy_completed_count: deployCompleted
+  };
+}
+
+function buildDangerousActionFlags(commandsRun = []) {
+  const flags = [];
+  for (const item of commandsRun) {
+    const cmd = String(item?.command || "");
+    if (!cmd) continue;
+    for (const pattern of DANGEROUS_ACTION_PATTERNS) {
+      if (pattern.test(cmd)) {
+        flags.push(`dangerous_action_detected:${cmd}`);
+        break;
+      }
+    }
+  }
+  return Array.from(new Set(flags)).slice(0, 20);
+}
+
+function buildStaleGuardResult({
+  latestUserRequest,
+  activeTaskScope,
+  snapshotLatestUserRequest
+}) {
+  const normalizedLatest = String(latestUserRequest || "").trim();
+  const normalizedSnapshot = String(snapshotLatestUserRequest || "").trim();
+  const scope = String(activeTaskScope || "").trim();
+  const taskGoalAnchored = normalizedLatest.length > 0 && scope.length > 0;
+  const staleDetected =
+    Boolean(normalizedSnapshot) &&
+    Boolean(normalizedLatest) &&
+    normalizedSnapshot !== normalizedLatest;
+  return {
+    task_goal_anchored: taskGoalAnchored,
+    stale_detected: staleDetected,
+    stale_reason: staleDetected ? "latest_user_request_mismatch" : "ok",
+    scope_lock: Boolean(scope),
+    latest_user_request: summarizeText(normalizedLatest, 600),
+    snapshot_latest_user_request: summarizeText(normalizedSnapshot, 600)
+  };
+}
+
+function parseSnapshotJsonRow(row) {
+  if (!row?.snapshot_json) return null;
+  return normalizeJsonField(row.snapshot_json, null);
+}
+
+function parseAutoContextJsonRow(row) {
+  if (!row?.context_json) return null;
+  return normalizeJsonField(row.context_json, null);
+}
+
+function latestAutoContextForRun(runId) {
+  const row = latestAutoContextCompilation(runId);
+  if (!row) return null;
+  const parsed = parseAutoContextJsonRow(row);
+  if (!parsed || typeof parsed !== "object") return null;
+  return parsed;
+}
+
+function latestSnapshotForSession(sessionId) {
+  const row = latestContextSnapshotForSession(sessionId);
+  if (!row) return null;
+  const parsed = parseSnapshotJsonRow(row);
+  if (!parsed || typeof parsed !== "object") return null;
+  return {
+    row,
+    snapshot: parsed
+  };
+}
+
+function latestRunEventSeq(runId) {
+  return Number(dbGet("SELECT COALESCE(MAX(seq), 0) AS n FROM events WHERE run_id = ?", runId)?.n || 0);
+}
+
+function compileAutoContextForRun({
+  runId,
+  sessionId = null,
+  stepId = null,
+  triggerPhase = "runtime",
+  requestedBy = "system"
+}) {
+  const run = dbGet("SELECT id, status, title, updated_at, created_at, last_event_type FROM runs WHERE id = ?", runId);
+  if (!run) {
+    return { ok: false, reason: "run_not_found" };
+  }
+  const resolvedSessionId = resolveSessionIdForRun(runId, sessionId);
+  const latestSnapshot = resolvedSessionId ? latestSnapshotForSession(resolvedSessionId) : null;
+  const latestSnapshotRow = latestSnapshot?.row || null;
+  const latestSnapshotPayload = latestSnapshot?.snapshot || null;
+  const latestUserRequest = latestUserRequestForRun(runId);
+  const activeTaskScope = activeTaskScopeForRun(runId);
+  const runLaneHit = dbGet(
+    "SELECT lane FROM entry_session_turns WHERE run_id = ? ORDER BY created_at DESC LIMIT 1",
+    runId
+  );
+  const lane = summarizeText(String(runLaneHit?.lane || "task"), 64);
+  const currentPhase = summarizeText(String(run.last_event_type || "runtime"), 160);
+  const filesReferenced = listFilesReferencedForRun(runId, 120);
+  const filesTouched = listFilesTouchedForRun(runId, 120);
+  const commandsRun = listCommandsRunForRun(runId, 80);
+  const verifySummary = summarizeVerifyStatus(runId);
+  const repairSummary = summarizeRepairLoopStatus(runId);
+  const toolchainSummary = summarizeToolchainStatus(runId);
+  const deployAuthSummary = summarizeDeployAuthorizationStatus(runId);
+  const latestArtifacts = Array.from(
+    new Set(
+      dbAll(
+        "SELECT artifact_path FROM compact_runs WHERE run_id = ? AND artifact_path IS NOT NULL ORDER BY completed_at DESC LIMIT 4",
+        runId
+      )
+        .map((x) => summarizeText(String(x?.artifact_path || ""), 300))
+        .filter(Boolean)
+    )
+  );
+  const openIssues = [];
+  if (verifySummary.status && verifySummary.status !== "passed" && verifySummary.status !== "completed") {
+    openIssues.push(`verify:${verifySummary.status}`);
+  }
+  if (repairSummary.in_progress) {
+    openIssues.push("repair_loop_in_progress");
+  }
+  if (deployAuthSummary.waiting_for_authorization) {
+    openIssues.push("deploy_authorization_waiting");
+  }
+  const resolvedIssues = [];
+  if (verifySummary.status === "passed" || verifySummary.status === "completed") {
+    resolvedIssues.push("verify_passed");
+  }
+  if (!repairSummary.in_progress && repairSummary.rounds_completed > 0) {
+    resolvedIssues.push("repair_round_completed");
+  }
+  const dangerousActionFlags = buildDangerousActionFlags(commandsRun);
+  const staleGuard = buildStaleGuardResult({
+    latestUserRequest,
+    activeTaskScope,
+    snapshotLatestUserRequest: latestSnapshotPayload?.latest_user_request || null
+  });
+  const deltaBaselineSeq = contextSnapshotSourceToSeqForRun(latestSnapshotRow, runId);
+  const deltaEventsSinceSnapshot = latestSnapshotRow
+    ? Math.max(0, latestRunEventSeq(runId) - deltaBaselineSeq)
+    : latestRunEventSeq(runId);
+  const payload = {
+    schema: AUTOCONTEXT_SCHEMA,
+    autocontext_id: shortId("autctx"),
+    session_id: resolvedSessionId || null,
+    run_id: runId,
+    created_at: nowIso(),
+    latest_user_request: latestUserRequest,
+    task_goal: summarizeText(latestUserRequest || run.title || "", 3000),
+    active_task_scope: activeTaskScope,
+    lane,
+    current_phase: currentPhase,
+    user_constraints: [],
+    files_referenced: filesReferenced,
+    files_touched: filesTouched,
+    pending_actions: openIssues,
+    commands_run: commandsRun,
+    latest_verify_status: verifySummary,
+    repair_loop_status: repairSummary,
+    toolchain_status: toolchainSummary,
+    deploy_auth_status: deployAuthSummary,
+    open_issues: openIssues,
+    resolved_issues: resolvedIssues,
+    latest_artifacts: latestArtifacts,
+    risk_flags: dangerousActionFlags,
+    context_sources: [
+      "run.events",
+      "entry.turn",
+      "file_changes",
+      latestSnapshotRow ? "context.snapshot" : "raw.history"
+    ],
+    redaction_result: {
+      secrets_removed: false,
+      redacted_fields: []
+    },
+    compact_snapshot_id: latestSnapshotRow?.id || null,
+    delta_events_since_snapshot: deltaEventsSinceSnapshot,
+    stale_guard: staleGuard,
+    trigger_phase: triggerPhase,
+    requested_by: requestedBy
+  };
+  const redactionStats = { redacted_fields: [] };
+  const redactedPayload = redactSecrets(payload, "$", redactionStats);
+  redactedPayload.redaction_result = {
+    secrets_removed: redactionStats.redacted_fields.length > 0 || payload.redaction_result.secrets_removed === true,
+    redacted_fields: Array.from(new Set(redactionStats.redacted_fields)).slice(0, 200)
+  };
+  const serialized = `${JSON.stringify(redactedPayload, null, 2)}\n`;
+  const artifactAbs = writeRunArtifact(
+    runId,
+    `autocontext_compilation_${Date.now()}_${String(triggerPhase || "runtime").replace(/[^a-zA-Z0-9._-]/g, "_")}.json`,
+    serialized
+  );
+  const artifactPath = toRepoRelative(artifactAbs);
+  const row = recordAutoContextCompilation({
+    sessionId: resolvedSessionId,
+    runId,
+    stepId,
+    triggerPhase,
+    contextJson: JSON.stringify(redactedPayload),
+    contextHash: textHash(JSON.stringify(redactedPayload)),
+    artifactPath,
+    redactionJson: JSON.stringify(redactedPayload.redaction_result || {}),
+    staleGuardJson: JSON.stringify(staleGuard || {}),
+    status: "completed",
+    errorCode: null,
+    errorMessage: null
+  });
+  return {
+    ok: true,
+    row,
+    context: redactedPayload,
+    artifact_path: artifactPath
+  };
+}
+
+function emitAutoContextCompilation({
+  runId,
+  stepId = null,
+  sessionId = null,
+  triggerPhase = "runtime",
+  requestedBy = "system"
+}) {
+  emitEvent(runId, "autocontext.compile.started", {
+    step_id: stepId || null,
+    session_id: sessionId || resolveSessionIdForRun(runId, null),
+    trigger_phase: triggerPhase,
+    requested_by: requestedBy
+  });
+  try {
+    const compiled = compileAutoContextForRun({
+      runId,
+      sessionId,
+      stepId,
+      triggerPhase,
+      requestedBy
+    });
+    if (!compiled.ok) {
+      emitEvent(runId, "autocontext.compile.failed", {
+        step_id: stepId || null,
+        session_id: sessionId || null,
+        trigger_phase: triggerPhase,
+        reason: compiled.reason || "autocontext_compile_failed"
+      });
+      return compiled;
+    }
+    emitEvent(runId, "autocontext.compile.completed", {
+      step_id: stepId || null,
+      session_id: compiled.context?.session_id || sessionId || null,
+      trigger_phase: triggerPhase,
+      autocontext_id: compiled.row.id,
+      artifact_path: compiled.artifact_path,
+      compact_snapshot_id: compiled.context?.compact_snapshot_id || null,
+      delta_events_since_snapshot: Number(compiled.context?.delta_events_since_snapshot || 0),
+      redaction_result: compiled.context?.redaction_result || {}
+    });
+    return compiled;
+  } catch (error) {
+    emitEvent(runId, "autocontext.compile.failed", {
+      step_id: stepId || null,
+      session_id: sessionId || null,
+      trigger_phase: triggerPhase,
+      reason: summarizeText(error instanceof Error ? error.message : String(error), 280) || "autocontext_compile_exception"
+    });
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+function issueRunContextReceipt({
+  runId,
+  sessionId = null,
+  stepId = null,
+  consumer = "planner"
+}) {
+  const resolvedSessionId = resolveSessionIdForRun(runId, sessionId);
+  const latestCompilation = latestAutoContextCompilation(runId) || null;
+  const latestSnapshotRow = resolvedSessionId ? latestContextSnapshotForSession(resolvedSessionId) : null;
+  const latestSnapshotPayload = parseSnapshotJsonRow(latestSnapshotRow);
+  const compiledContext = parseAutoContextJsonRow(latestCompilation);
+  const latestUserRequest = summarizeText(
+    String(
+      compiledContext?.latest_user_request ||
+        latestUserRequestForRun(runId) ||
+        latestSnapshotPayload?.latest_user_request ||
+        ""
+    ),
+    3000
+  );
+  const activeTaskScope = summarizeText(
+    String(compiledContext?.active_task_scope || activeTaskScopeForRun(runId) || ""),
+    2000
+  );
+  const staleGuardResult = buildStaleGuardResult({
+    latestUserRequest,
+    activeTaskScope,
+    snapshotLatestUserRequest: latestSnapshotPayload?.latest_user_request || null
+  });
+  const contextSources = [];
+  if (latestCompilation) contextSources.push("autocontext");
+  if (latestSnapshotRow) contextSources.push("snapshot");
+  contextSources.push("delta_events");
+  const deltaEventsIncluded = latestSnapshotRow
+    ? Math.max(0, latestRunEventSeq(runId) - contextSnapshotSourceToSeqForRun(latestSnapshotRow, runId))
+    : latestRunEventSeq(runId);
+  const redactionResult =
+    compiledContext?.redaction_result && typeof compiledContext.redaction_result === "object"
+      ? compiledContext.redaction_result
+      : { secrets_removed: true, redacted_fields: [] };
+  const payload = {
+    schema: CONTEXT_RECEIPT_SCHEMA,
+    receipt_id: shortId("ctxrcpt"),
+    run_id: runId,
+    session_id: resolvedSessionId || null,
+    consumed_autocontext_id: latestCompilation?.id || null,
+    consumed_snapshot_id: latestSnapshotRow?.id || null,
+    consumed_at: nowIso(),
+    context_sources: contextSources,
+    delta_events_included: deltaEventsIncluded,
+    raw_history_pruned_from_model_input: Boolean(latestSnapshotRow),
+    redaction_result: redactionResult,
+    latest_user_request: latestUserRequest,
+    active_task_scope: activeTaskScope,
+    stale_guard_result: staleGuardResult,
+    consumer
+  };
+  const receiptAbs = writeRunArtifact(
+    runId,
+    `run_context_receipt_${Date.now()}_${String(consumer || "planner").replace(/[^a-zA-Z0-9._-]/g, "_")}.json`,
+    `${JSON.stringify(payload, null, 2)}\n`
+  );
+  const receiptPath = toRepoRelative(receiptAbs);
+  const row = recordRunContextReceipt({
+    runId,
+    sessionId: resolvedSessionId,
+    autocontextId: latestCompilation?.id || null,
+    snapshotId: latestSnapshotRow?.id || null,
+    contextSourcesJson: JSON.stringify(contextSources),
+    deltaEventsIncluded,
+    rawHistoryPrunedFromModelInput: Boolean(latestSnapshotRow),
+    redactionJson: JSON.stringify(redactionResult),
+    staleGuardJson: JSON.stringify(staleGuardResult),
+    latestUserRequest,
+    activeTaskScope,
+    receiptArtifactPath: receiptPath,
+    status: "available"
+  });
+  emitEvent(runId, "run.context.receipt.available", {
+    step_id: stepId || null,
+    session_id: resolvedSessionId || null,
+    receipt_id: row.id,
+    receipt_path: receiptPath,
+    consumed_autocontext_id: latestCompilation?.id || null,
+    consumed_snapshot_id: latestSnapshotRow?.id || null,
+    context_sources: contextSources,
+    delta_events_included: deltaEventsIncluded,
+    raw_history_pruned_from_model_input: Boolean(latestSnapshotRow),
+    stale_guard_result: staleGuardResult
+  });
+  emitEvent(runId, "autocontext.consumed", {
+    step_id: stepId || null,
+    session_id: resolvedSessionId || null,
+    consumer,
+    autocontext_id: latestCompilation?.id || null,
+    receipt_id: row.id,
+    context_sources: contextSources
+  });
+  if (latestSnapshotRow?.id) {
+    emitEvent(runId, "context.compaction.consumed", {
+      step_id: stepId || null,
+      session_id: resolvedSessionId || null,
+      snapshot_id: latestSnapshotRow.id,
+      receipt_id: row.id,
+      context_sources: contextSources
+    });
+  }
+  return {
+    ok: true,
+    row,
+    payload,
+    receipt_path: receiptPath
+  };
 }
 
 function recordPhase4CloseoutResult({
@@ -13116,6 +17157,47 @@ function scrubSubmission(authSession, body) {
   };
 }
 
+function emitAuthWaitingUser(authSession, options = {}) {
+  const errorCode =
+    typeof options.error_code === "string" && options.error_code.trim() ? options.error_code.trim() : null;
+  const lifecycleSource =
+    typeof options.lifecycle_source === "string" && options.lifecycle_source.trim()
+      ? options.lifecycle_source.trim()
+      : "challenge_presented";
+  patchAuthSession(authSession.id, {
+    status: AUTH_STATUS_WAITING_USER,
+    last_error_code: errorCode || null
+  });
+  const payload = {
+    auth_session_id: authSession.id,
+    step_id: authSession.step_id,
+    mode: authSession.mode,
+    required_capability: authSession.required_capability,
+    selected_recipe_id: authSession.selected_recipe_id,
+    selected_verifier_id: authSession.selected_verifier_id,
+    status: AUTH_STATUS_WAITING_USER,
+    status_alias: AUTH_STATUS_PENDING_USER_ACTION,
+    lifecycle_state: AUTH_STATUS_WAITING_USER,
+    lifecycle_source: lifecycleSource,
+    retryable: options.retryable === true
+  };
+  if (errorCode) {
+    payload.retry_after_error_code = errorCode;
+  }
+  if (typeof options.restore_source === "string" && options.restore_source.trim()) {
+    payload.restore_source = options.restore_source.trim();
+  }
+  if (typeof authSession.timeout_at === "string" && authSession.timeout_at.trim()) {
+    payload.timeout_at = authSession.timeout_at;
+  }
+  emitEvent(authSession.run_id, "auth.waiting_user", payload);
+  emitEvent(authSession.run_id, "auth.pending_user_action", {
+    ...payload,
+    status: AUTH_STATUS_PENDING_USER_ACTION,
+    lifecycle_state: AUTH_STATUS_PENDING_USER_ACTION
+  });
+}
+
 function emitChallenge(authSession, recipe) {
   const rendererId = recipe.challenge_renderer;
   const renderer = challengeRenderers[rendererId];
@@ -13137,16 +17219,8 @@ function emitChallenge(authSession, recipe) {
   const rendered = renderer(authSession, recipe);
   patchAuthSession(authSession.id, { status: "challenge_presented", last_error_code: null });
   emitEvent(authSession.run_id, rendered.eventType, rendered.payload);
-
-  patchAuthSession(authSession.id, { status: "pending_user_action", last_error_code: null });
-  emitEvent(authSession.run_id, "auth.pending_user_action", {
-    auth_session_id: authSession.id,
-    step_id: authSession.step_id,
-    mode: authSession.mode,
-    required_capability: authSession.required_capability,
-    selected_recipe_id: authSession.selected_recipe_id,
-    selected_verifier_id: authSession.selected_verifier_id,
-    status: "pending_user_action"
+  emitAuthWaitingUser(authSession, {
+    lifecycle_source: "challenge_presented"
   });
 }
 
@@ -13207,6 +17281,12 @@ function resumeAndComplete(runId, stepId, authSessionId, grants) {
     step_id: stepId,
     auth_session_id: authSessionId,
     resume_reason: "auth_verified"
+  });
+  emitEvent(runId, "auth.resumed_original_run", {
+    step_id: stepId,
+    auth_session_id: authSessionId,
+    resume_reason: "auth_verified",
+    lifecycle_state: "resumed_original_run"
   });
   if (authSessionId) {
     patchAuthSession(authSessionId, { status: "resumed", last_error_code: null });
@@ -22038,15 +26118,22 @@ function submitAuthSession(authSession, body) {
     });
 
     if (verifyResult.retryable) {
-      patchAuthSession(authSession.id, { status: "pending_user_action", last_error_code: errorCode });
-      emitEvent(authSession.run_id, "auth.pending_user_action", {
-        auth_session_id: authSession.id,
-        step_id: authSession.step_id,
-        mode: authSession.mode,
-        selected_recipe_id: authSession.selected_recipe_id,
-        selected_verifier_id: authSession.selected_verifier_id,
-        status: "pending_user_action",
-        retry_after_error_code: errorCode
+      if (AUTH_CONFIRMATION_REQUIRED_ERROR_CODES.has(errorCode)) {
+        emitEvent(authSession.run_id, "auth.dialog_closed_unconfirmed", {
+          auth_session_id: authSession.id,
+          step_id: authSession.step_id,
+          mode: authSession.mode,
+          selected_recipe_id: authSession.selected_recipe_id,
+          selected_verifier_id: authSession.selected_verifier_id,
+          error_code: errorCode,
+          retryable: true,
+          lifecycle_state: "dialog_closed_unconfirmed"
+        });
+      }
+      emitAuthWaitingUser(authSession, {
+        error_code: errorCode,
+        retryable: true,
+        lifecycle_source: "verification_retry"
       });
       return { ok: false, reason: errorCode };
     }
@@ -22124,7 +26211,9 @@ function revokeGrant(grant, reason) {
 
 function sweepExternalAuthCompletions() {
   const rows = dbAll(
-    "SELECT * FROM auth_sessions WHERE status = 'pending_user_action' AND selected_verifier_id IN (?, ?) ORDER BY created_at ASC LIMIT 10",
+    "SELECT * FROM auth_sessions WHERE status IN (?, ?) AND selected_verifier_id IN (?, ?) ORDER BY created_at ASC LIMIT 10",
+    AUTH_STATUS_PENDING_USER_ACTION,
+    AUTH_STATUS_WAITING_USER,
     vercelVerifierId,
     wranglerVerifierId
   );
@@ -22148,6 +26237,20 @@ function sweepExternalAuthCompletions() {
     }
     const platform = platformFromSession(row, verifyResult, recipe);
 
+    emitEvent(row.run_id, "auth.callback_detected", {
+      auth_session_id: row.id,
+      step_id: row.step_id,
+      mode: row.mode,
+      platform,
+      platform_auth_type: verifyResult.platform_auth_type || "unknown",
+      detector: `${platform}_polling`,
+      detection_signal: detectionSignal(platform),
+      selected_recipe_id: row.selected_recipe_id,
+      selected_verifier_id: row.selected_verifier_id,
+      account_hint: verifyResult.platform_account_hint || null,
+      scope_hint: verifyResult.platform_scope_hint || null,
+      lifecycle_state: "callback_detected"
+    });
     emitEvent(row.run_id, "auth.detected_external_completion", {
       auth_session_id: row.id,
       step_id: row.step_id,
@@ -22231,15 +26334,18 @@ function runDetails(runId) {
   if (!run) {
     return null;
   }
+  const resolvedSessionId = resolveSessionIdForRun(runId, null);
   const events = dbAll(
     "SELECT seq, type, payload_json, created_at FROM events WHERE run_id = ? ORDER BY seq ASC",
     runId
-  ).map((row) => ({
-    seq: row.seq,
-    type: row.type,
-    created_at: row.created_at,
-    payload: JSON.parse(row.payload_json)
-  }));
+  ).map((row) => {
+    const payload = parsePayloadJson(row.payload_json);
+    const eventEnvelope = {
+      ...buildRuntimeEventEnvelope(runId, row.seq, row.type, row.created_at, payload),
+      created_at: row.created_at
+    };
+    return enrichRuntimeEventForApi(eventEnvelope);
+  });
   const displayEvents = projectDisplayEventsFromRuntimeEvents(events);
   const authSessions = dbAll("SELECT * FROM auth_sessions WHERE run_id = ? ORDER BY created_at DESC", runId);
   const grants = dbAll("SELECT * FROM capability_grants WHERE run_id = ? ORDER BY verified_at DESC", runId);
@@ -22387,6 +26493,23 @@ function runDetails(runId) {
     "SELECT * FROM autocontext_snapshots WHERE run_id = ? ORDER BY created_at ASC",
     runId
   );
+  const autocontextCompilations = dbAll(
+    "SELECT * FROM autocontext_compilations WHERE run_id = ? ORDER BY created_at ASC",
+    runId
+  );
+  const contextSnapshots = resolvedSessionId
+    ? dbAll("SELECT * FROM context_snapshots WHERE session_id = ? ORDER BY created_at ASC", resolvedSessionId)
+    : dbAll("SELECT * FROM context_snapshots WHERE run_id = ? ORDER BY created_at ASC", runId);
+  const contextCompactions = resolvedSessionId
+    ? dbAll("SELECT * FROM context_compactions WHERE session_id = ? ORDER BY started_at ASC", resolvedSessionId)
+    : dbAll("SELECT * FROM context_compactions WHERE run_id = ? ORDER BY started_at ASC", runId);
+  const runContextReceipts = dbAll(
+    "SELECT * FROM run_context_receipts WHERE run_id = ? ORDER BY consumed_at ASC",
+    runId
+  );
+  const contextSettings = resolvedSessionId
+    ? dbAll("SELECT * FROM context_settings WHERE session_id = ? ORDER BY updated_at DESC LIMIT 1", resolvedSessionId)
+    : [];
   const ledgerIntegrityReports = dbAll("SELECT * FROM ledger_integrity_reports ORDER BY created_at DESC LIMIT 10");
   const deployRuns = dbAll("SELECT * FROM deploy_runs WHERE run_id = ? ORDER BY created_at ASC", runId);
   const deployRetries = dbAll("SELECT * FROM deploy_retries WHERE run_id = ? ORDER BY created_at ASC", runId);
@@ -22681,6 +26804,12 @@ function runDetails(runId) {
     attachment_manifests: attachmentManifests,
     run_attachments: runAttachments,
     autocontext_snapshots: autocontextSnapshots,
+    autocontext_compilations: autocontextCompilations,
+    context_snapshots: contextSnapshots,
+    context_compactions: contextCompactions,
+    run_context_receipts: runContextReceipts,
+    context_settings: contextSettings,
+    resolved_session_id: resolvedSessionId || null,
     ledger_integrity_reports: ledgerIntegrityReports,
     deploy_runs: deployRuns,
     deploy_retries: deployRetries,
@@ -22768,12 +26897,8 @@ function getRunEventsSinceSeq(runId, sinceSeq, limit = 500) {
   ).map((row) => {
     const payload = parsePayloadJson(row.payload_json);
     const event = {
-      event_id: `evt_${runId}_${row.seq}`,
-      run_id: runId,
-      seq: row.seq,
-      type: row.type,
-      ts: row.created_at,
-      payload
+      ...buildRuntimeEventEnvelope(runId, row.seq, row.type, row.created_at, payload),
+      created_at: row.created_at
     };
     const projectedDisplayEvent = projectRuntimeEventToDisplayEvent({
       seq: row.seq,
@@ -22796,7 +26921,7 @@ function getRunEventsSinceSeq(runId, sinceSeq, limit = 500) {
         errors: frontendCheck.valid ? [] : frontendCheck.errors
       };
     }
-    return event;
+    return enrichRuntimeEventForApi(event);
   });
 }
 
@@ -22956,6 +27081,280 @@ function buildCompactSummaryFromEvents(runId, rows) {
   };
 }
 
+function countRunEventsByType(runId, typeLike) {
+  if (!typeLike) return 0;
+  return Number(dbGet("SELECT COUNT(1) AS n FROM events WHERE run_id = ? AND type = ?", runId, typeLike)?.n || 0);
+}
+
+function sumRunStdoutStderrChars(runId) {
+  const rows = dbAll(
+    "SELECT payload_json FROM events WHERE run_id = ? AND type IN ('command.completed','runtime.sandbox.command.completed','shell.command.completed') ORDER BY seq ASC",
+    runId
+  );
+  let chars = 0;
+  for (const row of rows) {
+    const payload = parsePayloadJson(row.payload_json);
+    chars += String(payload?.stdout || payload?.stdout_summary || "").length;
+    chars += String(payload?.stderr || payload?.stderr_summary || "").length;
+  }
+  return chars;
+}
+
+function approximateArtifactCountForRun(runId) {
+  const rows = dbAll("SELECT payload_json FROM events WHERE run_id = ? ORDER BY seq ASC", runId);
+  const artifactSet = new Set();
+  for (const row of rows) {
+    const payload = parsePayloadJson(row.payload_json);
+    collectArtifactPathsFromObject(payload, artifactSet);
+  }
+  return artifactSet.size;
+}
+
+function evaluateCompactionBoundary(runId) {
+  const run = dbGet("SELECT id, status FROM runs WHERE id = ?", runId);
+  if (!run) {
+    return {
+      safe: false,
+      reason: "run_not_found",
+      blocking_phase: "unknown"
+    };
+  }
+  const runStatus = String(run.status || "").toLowerCase();
+  if (runStatus === "canceling" || runStatus === "cancelling") {
+    return { safe: false, reason: "unsafe_boundary", blocking_phase: "run.canceling" };
+  }
+  const commandStarted = countRunEventsByType(runId, "command.started") + countRunEventsByType(runId, "shell.command.started");
+  const commandEnded =
+    countRunEventsByType(runId, "command.completed") +
+    countRunEventsByType(runId, "shell.command.completed") +
+    countRunEventsByType(runId, "command.failed");
+  if (commandStarted > commandEnded) {
+    return { safe: false, reason: "unsafe_boundary", blocking_phase: "command.running" };
+  }
+  const verifyStarted = countRunEventsByType(runId, "verify.started");
+  const verifyEnded =
+    countRunEventsByType(runId, "verify.completed") +
+    countRunEventsByType(runId, "verify.passed") +
+    countRunEventsByType(runId, "verify.failed");
+  if (verifyStarted > verifyEnded) {
+    return { safe: false, reason: "unsafe_boundary", blocking_phase: "verify.running" };
+  }
+  const fileWriteStarted = countRunEventsByType(runId, "file.write.started");
+  const fileWriteEnded = countRunEventsByType(runId, "file.write.completed");
+  if (fileWriteStarted > fileWriteEnded) {
+    return { safe: false, reason: "unsafe_boundary", blocking_phase: "file.write.running" };
+  }
+  const patchApplying = countRunEventsByType(runId, "patch.applying");
+  const patchApplied = countRunEventsByType(runId, "patch.applied") + countRunEventsByType(runId, "patch.failed");
+  if (patchApplying > patchApplied) {
+    return { safe: false, reason: "unsafe_boundary", blocking_phase: "patch.applying" };
+  }
+  const repairStarted = countRunEventsByType(runId, "repair.started");
+  const repairEnded = countRunEventsByType(runId, "repair.completed");
+  if (repairStarted > repairEnded) {
+    return { safe: false, reason: "unsafe_boundary", blocking_phase: "repair.half_round" };
+  }
+  const deployAuthWaiting = countRunEventsByType(runId, "deploy.authorization.required");
+  const approvalDecisions =
+    countRunEventsByType(runId, "approval.continue.started") +
+    countRunEventsByType(runId, "approval.rejected") +
+    countRunEventsByType(runId, "approval.cancelled");
+  if (deployAuthWaiting > approvalDecisions && String(run.status || "") === "pending_approval") {
+    return { safe: false, reason: "unsafe_boundary", blocking_phase: "deploy.authorization.waiting" };
+  }
+  const toolInstallStarted = countRunEventsByType(runId, "tool.install.started");
+  const toolInstallEnded =
+    countRunEventsByType(runId, "tool.install.completed") + countRunEventsByType(runId, "tool.install.failed_controlled");
+  if (toolInstallStarted > toolInstallEnded) {
+    return { safe: false, reason: "unsafe_boundary", blocking_phase: "toolchain.install.running" };
+  }
+  const latestType = String(
+    dbGet("SELECT type FROM events WHERE run_id = ? ORDER BY seq DESC LIMIT 1", runId)?.type || ""
+  );
+  if (/timeout\.handling/i.test(latestType)) {
+    return { safe: false, reason: "unsafe_boundary", blocking_phase: "timeout.handling" };
+  }
+  return {
+    safe: true,
+    reason: "safe_boundary",
+    blocking_phase: null
+  };
+}
+
+function shouldAutoCompactForEvent(runId, eventType, payload) {
+  const sessionId = resolveSessionIdForRun(runId, payload?.session_id || null);
+  if (!sessionId) {
+    return { should: false, reason: "session_id_missing" };
+  }
+  const settings = readContextSettings(sessionId);
+  if (!settings) {
+    return { should: false, reason: "context_settings_missing", session_id: sessionId };
+  }
+  if (Number(settings.auto_compact_enabled) !== 1) {
+    return { should: false, reason: "auto_compact_disabled", session_id: sessionId };
+  }
+  if (Number(settings.auto_compact_after_task_lane) !== 1) {
+    return { should: false, reason: "auto_compact_after_task_lane_disabled", session_id: sessionId };
+  }
+
+  const normalizedType = String(eventType || "");
+  const latestCompactSnapshot = latestContextSnapshotForSession(sessionId);
+  const latestToSeq = contextSnapshotSourceToSeqForRun(latestCompactSnapshot, runId);
+  const maxSeq = latestRunEventSeq(runId);
+  const deltaCount = Math.max(0, maxSeq - latestToSeq);
+  const tokenEstimate = estimateTokenCountForRunRange(runId, latestToSeq + 1, maxSeq);
+  const stdoutChars = sumRunStdoutStderrChars(runId);
+  const artifactCount = approximateArtifactCountForRun(runId);
+  const repairStarted = countRunEventsByType(runId, "repair.started");
+  const laneFallback = dbGet(
+    "SELECT lane FROM entry_session_turns WHERE run_id = ? ORDER BY created_at DESC LIMIT 1",
+    runId
+  );
+  const normalizedLane = String(payload?.lane || laneFallback?.lane || "").toLowerCase();
+
+  if (deltaCount >= Number(settings.event_threshold || 120)) {
+    return { should: true, reason: "events_threshold", session_id: sessionId };
+  }
+  if (tokenEstimate >= Number(settings.token_threshold || 12000)) {
+    return { should: true, reason: "token_threshold", session_id: sessionId };
+  }
+  if (stdoutChars >= Number(settings.stdout_stderr_threshold || 12000)) {
+    return { should: true, reason: "stdout_stderr_threshold", session_id: sessionId };
+  }
+  if (artifactCount >= Number(settings.artifacts_threshold || 24)) {
+    return { should: true, reason: "artifacts_threshold", session_id: sessionId };
+  }
+  if (repairStarted >= Number(settings.repair_round_threshold || 2)) {
+    return { should: true, reason: "repair_round_threshold", session_id: sessionId };
+  }
+  if (
+    Number(settings.auto_compact_after_task_lane) === 1 &&
+    ["step.completed", "step.failed_controlled", "step.failed"].includes(normalizedType) &&
+    normalizedLane === "task"
+  ) {
+    return {
+      should: true,
+      reason: normalizedType === "step.completed" ? "task_lane_completed" : "task_lane_terminal",
+      session_id: sessionId
+    };
+  }
+  if (normalizedType === "review.available") {
+    return { should: true, reason: "before_review", session_id: sessionId };
+  }
+  if (normalizedType === "acceptance.started") {
+    return { should: true, reason: "before_acceptance", session_id: sessionId };
+  }
+  return { should: false, reason: "threshold_not_hit", session_id: sessionId };
+}
+
+function buildContextSnapshotPayload({
+  sessionId,
+  runId,
+  compactionReason,
+  sourceFromSeq,
+  sourceToSeq,
+  tokenEstimateBefore,
+  tokenEstimateAfter,
+  latestCompilation,
+  latestCompilationPayload,
+  redactionResult
+}) {
+  const verificationSummary = summarizeVerifyStatus(runId);
+  const repairSummary = summarizeRepairLoopStatus(runId);
+  const toolchainSummary = summarizeToolchainStatus(runId);
+  const deployAuthSummary = summarizeDeployAuthorizationStatus(runId);
+  const openIssues = [];
+  if (verificationSummary.status && !["passed", "completed"].includes(verificationSummary.status)) {
+    openIssues.push(`verify:${verificationSummary.status}`);
+  }
+  if (repairSummary.in_progress) {
+    openIssues.push("repair_in_progress");
+  }
+  if (deployAuthSummary.waiting_for_authorization) {
+    openIssues.push("deploy_authorization_waiting");
+  }
+  const commandsSummary = listCommandsRunForRun(runId, 60);
+  const nextActions = openIssues.length > 0 ? ["resolve_open_issues"] : ["continue_with_latest_user_request"];
+  const latestUserRequest = summarizeText(
+    String(latestCompilationPayload?.latest_user_request || latestUserRequestForRun(runId) || ""),
+    4000
+  );
+  const activeTaskScope = summarizeText(
+    String(latestCompilationPayload?.active_task_scope || activeTaskScopeForRun(runId) || ""),
+    3000
+  );
+  const riskFlags = Array.from(
+    new Set([
+      ...(Array.isArray(latestCompilationPayload?.risk_flags) ? latestCompilationPayload.risk_flags : []),
+      ...buildDangerousActionFlags(commandsSummary)
+    ])
+  ).slice(0, 40);
+  const qualityChecks = {
+    has_task_goal: Boolean(String(latestCompilationPayload?.task_goal || latestUserRequest || "").trim()),
+    has_latest_user_request: Boolean(String(latestUserRequest || "").trim()),
+    has_active_scope: Boolean(String(activeTaskScope || "").trim()),
+    has_open_issues: Array.isArray(openIssues),
+    has_next_actions: Array.isArray(nextActions) && nextActions.length > 0,
+    no_secret_leak: redactionResult?.secrets_removed === true || (redactionResult?.redacted_fields || []).length === 0,
+    not_empty: true
+  };
+  const snapshot = {
+    schema: CONTEXT_SNAPSHOT_SCHEMA,
+    snapshot_id: shortId("ctxsnap"),
+    session_id: sessionId,
+    created_at: nowIso(),
+    source_run_ids: [runId],
+    source_event_range: {
+      from_seq: Number(sourceFromSeq || 1),
+      to_seq: Number(sourceToSeq || 0)
+    },
+    token_estimate_before: Number(tokenEstimateBefore || 0),
+    token_estimate_after: Number(tokenEstimateAfter || 0),
+    compaction_reason: summarizeText(compactionReason || "manual", 300),
+    task_goal: summarizeText(String(latestCompilationPayload?.task_goal || latestUserRequest), 3000),
+    latest_user_request: latestUserRequest,
+    active_task_scope: activeTaskScope,
+    user_constraints: Array.isArray(latestCompilationPayload?.user_constraints) ? latestCompilationPayload.user_constraints : [],
+    files_touched: listFilesTouchedForRun(runId, 200),
+    files_referenced: listFilesReferencedForRun(runId, 200),
+    commands_summary: commandsSummary,
+    verification_summary: verificationSummary,
+    repair_summary: repairSummary,
+    toolchain_summary: toolchainSummary,
+    deploy_auth_summary: deployAuthSummary,
+    open_issues: openIssues,
+    resolved_issues: Array.isArray(latestCompilationPayload?.resolved_issues) ? latestCompilationPayload.resolved_issues : [],
+    next_actions: nextActions,
+    must_not_do: ["do_not_ignore_latest_user_request", "do_not_emit_dangerous_action_without_auth"],
+    risk_flags: riskFlags,
+    redaction_result: redactionResult,
+    quality_checks: qualityChecks
+  };
+  snapshot.quality_checks.not_empty = Object.keys(snapshot).length > 5;
+  return snapshot;
+}
+
+function validateContextSnapshotQuality(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return { ok: false, reason: "snapshot_empty", quality_checks: null };
+  }
+  const checks = snapshot.quality_checks && typeof snapshot.quality_checks === "object" ? snapshot.quality_checks : {};
+  const requiredFailures = [];
+  if (!checks.has_task_goal) requiredFailures.push("has_task_goal");
+  if (!checks.has_latest_user_request) requiredFailures.push("has_latest_user_request");
+  if (!checks.has_active_scope) requiredFailures.push("has_active_scope");
+  if (!checks.no_secret_leak) requiredFailures.push("no_secret_leak");
+  if (!checks.not_empty) requiredFailures.push("not_empty");
+  if (requiredFailures.length > 0) {
+    return {
+      ok: false,
+      reason: `snapshot_quality_failed:${requiredFailures.join(",")}`,
+      quality_checks: checks
+    };
+  }
+  return { ok: true, reason: "quality_passed", quality_checks: checks };
+}
+
 function createCompactForRun(runId, triggerType = "manual", options = {}) {
   const run = dbGet("SELECT * FROM runs WHERE id = ?", runId);
   if (!run) {
@@ -22973,10 +27372,16 @@ function createCompactForRun(runId, triggerType = "manual", options = {}) {
       runId
     );
     const sourceFromDefault = latestCompact ? Number(latestCompact.source_event_to_seq || 0) + 1 : 1;
-    const sourceFrom = Number.isFinite(Number(options.sourceEventFromSeq))
-      ? Number(options.sourceEventFromSeq)
-      : sourceFromDefault;
-    const sourceTo = Number.isFinite(Number(options.sourceEventToSeq)) ? Number(options.sourceEventToSeq) : maxSeq;
+    const hasExplicitSourceFrom =
+      options.sourceEventFromSeq !== null &&
+      options.sourceEventFromSeq !== undefined &&
+      !(typeof options.sourceEventFromSeq === "string" && !String(options.sourceEventFromSeq).trim());
+    const hasExplicitSourceTo =
+      options.sourceEventToSeq !== null &&
+      options.sourceEventToSeq !== undefined &&
+      !(typeof options.sourceEventToSeq === "string" && !String(options.sourceEventToSeq).trim());
+    const sourceFrom = hasExplicitSourceFrom ? Number(options.sourceEventFromSeq) : sourceFromDefault;
+    const sourceTo = hasExplicitSourceTo ? Number(options.sourceEventToSeq) : maxSeq;
     if (sourceTo < sourceFrom) {
       return {
         ok: false,
@@ -23181,34 +27586,454 @@ function createCompactForRun(runId, triggerType = "manual", options = {}) {
   }
 }
 
-function maybeAutoCompactRun(runId, triggeringEventType) {
-  if (!compactPolicyContract?.auto_trigger) {
-    return;
+function runContextCompaction({
+  runId,
+  sessionId = null,
+  triggerType = "manual",
+  reason = "manual_compaction",
+  manual = false,
+  requestedBy = "system",
+  sourceEventFromSeq = null,
+  sourceEventToSeq = null,
+  timeoutMs = 15000,
+  simulateTimeout = false
+}) {
+  const run = dbGet("SELECT id, status FROM runs WHERE id = ?", runId);
+  if (!run) {
+    return { ok: false, error: "run_not_found", run_id: runId };
   }
-  if (compactInProgressRunIds.has(runId)) {
+  const resolvedSessionId = resolveSessionIdForRun(runId, sessionId);
+  if (!resolvedSessionId) {
+    const legacy = createCompactForRun(runId, triggerType, {
+      sourceEventFromSeq: Number.isFinite(Number(sourceEventFromSeq)) ? Number(sourceEventFromSeq) : undefined,
+      sourceEventToSeq: Number.isFinite(Number(sourceEventToSeq)) ? Number(sourceEventToSeq) : undefined
+    });
+    if (!legacy.ok) {
+      return { ok: false, error: "session_not_found_for_run", run_id: runId, legacy };
+    }
+    emitEvent(runId, "context.compaction.skipped", {
+      session_id: null,
+      run_id: runId,
+      trigger_type: triggerType,
+      reason: "session_not_found_fallback_legacy_compact",
+      manual
+    });
+    return {
+      ok: true,
+      context_compaction: null,
+      context_snapshot: null,
+      compact_run: legacy.compact_run,
+      compact_artifact: legacy.compact_artifact,
+      compact_mapping: legacy.compact_mapping
+    };
+  }
+  ensureContextSettingsRow(resolvedSessionId);
+  const boundary = evaluateCompactionBoundary(runId);
+  if (!boundary.safe) {
+    emitEvent(runId, "context.compaction.skipped", {
+      session_id: resolvedSessionId,
+      run_id: runId,
+      trigger_type: triggerType,
+      reason: "unsafe_boundary",
+      blocking_phase: boundary.blocking_phase || "unknown",
+      manual
+    });
+    if (!manual) {
+      pendingContextCompactionsByRun.set(runId, {
+        session_id: resolvedSessionId,
+        trigger_type: triggerType,
+        reason,
+        requested_by: requestedBy,
+        requested_at: nowIso()
+      });
+    }
+    return {
+      ok: false,
+      error: "unsafe_boundary",
+      blocking_phase: boundary.blocking_phase || "unknown",
+      queued: !manual
+    };
+  }
+
+  if (contextCompactionSessionLocks.has(resolvedSessionId)) {
+    emitEvent(runId, "context.compaction.skipped", {
+      session_id: resolvedSessionId,
+      run_id: runId,
+      trigger_type: triggerType,
+      reason: "concurrency_lock",
+      manual
+    });
+    return { ok: false, error: "concurrency_lock", session_id: resolvedSessionId };
+  }
+
+  const maxSeq = latestRunEventSeq(runId);
+  const latestSnapshot = latestContextSnapshotForSession(resolvedSessionId);
+  const sourceFromDefault = contextSnapshotSourceToSeqForRun(latestSnapshot, runId) + 1;
+  const hasExplicitSourceFrom =
+    sourceEventFromSeq !== null &&
+    sourceEventFromSeq !== undefined &&
+    !(typeof sourceEventFromSeq === "string" && !sourceEventFromSeq.trim());
+  const hasExplicitSourceTo =
+    sourceEventToSeq !== null &&
+    sourceEventToSeq !== undefined &&
+    !(typeof sourceEventToSeq === "string" && !sourceEventToSeq.trim());
+  const sourceFrom = hasExplicitSourceFrom ? Number(sourceEventFromSeq) : sourceFromDefault;
+  const sourceTo = hasExplicitSourceTo ? Number(sourceEventToSeq) : maxSeq;
+  if (sourceTo < sourceFrom) {
+    emitEvent(runId, "context.compaction.skipped", {
+      session_id: resolvedSessionId,
+      run_id: runId,
+      trigger_type: triggerType,
+      reason: "empty_source_range",
+      source_event_from_seq: sourceFrom,
+      source_event_to_seq: sourceTo,
+      manual
+    });
+    return {
+      ok: false,
+      error: "empty_source_range",
+      source_event_from_seq: sourceFrom,
+      source_event_to_seq: sourceTo
+    };
+  }
+
+  const idempotencyKey = `ctxcmp:${resolvedSessionId}:${runId}:${sourceFrom}:${sourceTo}`;
+  const existingByIdempotency = dbGet(
+    "SELECT * FROM context_compactions WHERE idempotency_key = ? ORDER BY started_at DESC LIMIT 1",
+    idempotencyKey
+  );
+  if (existingByIdempotency) {
+    if (String(existingByIdempotency.status || "") === "completed") {
+      emitEvent(runId, "context.compaction.skipped", {
+        session_id: resolvedSessionId,
+        run_id: runId,
+        trigger_type: triggerType,
+        reason: "idempotent_hit",
+        idempotency_key: idempotencyKey,
+        snapshot_id: existingByIdempotency.snapshot_id || null,
+        manual
+      });
+      return {
+        ok: true,
+        idempotent: true,
+        context_compaction: existingByIdempotency,
+        snapshot: existingByIdempotency.snapshot_id
+          ? dbGet("SELECT * FROM context_snapshots WHERE id = ? LIMIT 1", existingByIdempotency.snapshot_id)
+          : null
+      };
+    }
+    if (String(existingByIdempotency.status || "") === "started") {
+      emitEvent(runId, "context.compaction.skipped", {
+        session_id: resolvedSessionId,
+        run_id: runId,
+        trigger_type: triggerType,
+        reason: "already_started",
+        idempotency_key: idempotencyKey,
+        manual
+      });
+      return { ok: false, error: "already_started", context_compaction: existingByIdempotency };
+    }
+    emitEvent(runId, "context.compaction.skipped", {
+      session_id: resolvedSessionId,
+      run_id: runId,
+      trigger_type: triggerType,
+      reason: "idempotency_conflict",
+      idempotency_key: idempotencyKey,
+      manual
+    });
+    return { ok: false, error: "idempotency_conflict", context_compaction: existingByIdempotency };
+  }
+
+  contextCompactionSessionLocks.add(resolvedSessionId);
+  const startedAtMs = Date.now();
+  let compactionRow = null;
+  const fail = (errorCode, errorMessage, extraPayload = {}) => {
+    const patched = compactionRow?.id
+      ? patchContextCompaction(compactionRow.id, {
+          completed_at: nowIso(),
+          status: "failed",
+          error_code: errorCode,
+          error_message: summarizeText(errorMessage || errorCode, 360)
+        })
+      : null;
+    patchContextSettingsCompactStatus(resolvedSessionId, {
+      last_compact_status: "failed",
+      last_snapshot_id: null,
+      last_compact_reason: summarizeText(reason || "", 280),
+      last_compacted_at: nowIso()
+    });
+    emitEvent(runId, "context.compaction.failed", {
+      session_id: resolvedSessionId,
+      run_id: runId,
+      context_compaction_id: compactionRow?.id || null,
+      trigger_type: triggerType,
+      reason: summarizeText(reason || "", 280),
+      error_code: errorCode,
+      error_message: summarizeText(errorMessage || errorCode, 360),
+      fallback_status: "raw_history_retained",
+      status: "failed",
+      ...extraPayload
+    });
+    return {
+      ok: false,
+      error: errorCode,
+      reason: errorMessage,
+      context_compaction: patched || compactionRow || null
+    };
+  };
+
+  try {
+    compactionRow = recordContextCompaction({
+      sessionId: resolvedSessionId,
+      runId,
+      status: "started",
+      reason,
+      snapshotId: null,
+      errorCode: null,
+      errorMessage: null,
+      idempotencyKey,
+      sourceFromSeq: sourceFrom,
+      sourceToSeq: sourceTo,
+      artifactPath: null,
+      timeoutMs,
+      triggerType
+    });
+    emitEvent(runId, "context.compaction.started", {
+      session_id: resolvedSessionId,
+      run_id: runId,
+      context_compaction_id: compactionRow.id,
+      trigger_type: triggerType,
+      reason: summarizeText(reason || "manual_compaction", 280),
+      source_event_from_seq: sourceFrom,
+      source_event_to_seq: sourceTo,
+      status: "running",
+      manual
+    });
+
+    if (simulateTimeout || Number(timeoutMs) <= 1) {
+      throw new Error("context_compaction_timeout");
+    }
+    const assertWithinTimeout = (phase) => {
+      if (Date.now() - startedAtMs > Number(timeoutMs || 15000)) {
+        throw new Error(`context_compaction_timeout:${phase}`);
+      }
+    };
+
+    assertWithinTimeout("before_legacy_compact");
+    const legacyCompact = createCompactForRun(runId, triggerType, {
+      sourceEventFromSeq: sourceFrom,
+      sourceEventToSeq: sourceTo
+    });
+    if (!legacyCompact.ok) {
+      return fail(
+        "legacy_compact_failed",
+        legacyCompact.reason || legacyCompact.error || "legacy_compact_failed",
+        {
+          compact_run_id: legacyCompact.compact_run_id || null
+        }
+      );
+    }
+
+    assertWithinTimeout("after_legacy_compact");
+    const compiled = compileAutoContextForRun({
+      runId,
+      sessionId: resolvedSessionId,
+      stepId: null,
+      triggerPhase: "compaction.snapshot",
+      requestedBy
+    });
+    const compiledPayload = compiled.ok ? compiled.context : latestAutoContextForRun(runId);
+    const redactionResult =
+      compiledPayload?.redaction_result && typeof compiledPayload.redaction_result === "object"
+        ? compiledPayload.redaction_result
+        : { secrets_removed: true, redacted_fields: [] };
+    const tokenBefore = estimateTokenCountForRunRange(runId, sourceFrom, sourceTo);
+    const sourceSummary = {
+      run_id: runId,
+      session_id: resolvedSessionId,
+      source_from_seq: sourceFrom,
+      source_to_seq: sourceTo,
+      reason: summarizeText(reason || "manual_compaction", 280),
+      trigger_type: triggerType
+    };
+    const snapshotSeed = buildContextSnapshotPayload({
+      sessionId: resolvedSessionId,
+      runId,
+      compactionReason: reason,
+      sourceFromSeq: sourceFrom,
+      sourceToSeq: sourceTo,
+      tokenEstimateBefore: tokenBefore,
+      tokenEstimateAfter: tokenBefore,
+      latestCompilation: compiled.ok ? compiled.row : latestAutoContextCompilation(runId),
+      latestCompilationPayload: compiledPayload,
+      redactionResult
+    });
+    const snapshotStats = { redacted_fields: [] };
+    const snapshotRedacted = redactSecrets(snapshotSeed, "$", snapshotStats);
+    snapshotRedacted.redaction_result = {
+      secrets_removed: true,
+      redacted_fields: Array.from(
+        new Set([...(snapshotSeed.redaction_result?.redacted_fields || []), ...snapshotStats.redacted_fields])
+      ).slice(0, 200)
+    };
+    const tokenAfter = estimateTokenCountFromText(JSON.stringify(snapshotRedacted));
+    snapshotRedacted.token_estimate_after = tokenAfter;
+    snapshotRedacted.token_estimate_before = tokenBefore;
+    const quality = validateContextSnapshotQuality(snapshotRedacted);
+    if (!quality.ok) {
+      return fail("snapshot_quality_failed", quality.reason || "snapshot_quality_failed", {
+        quality_checks: quality.quality_checks || null
+      });
+    }
+
+    assertWithinTimeout("snapshot_quality");
+    const snapshotId = snapshotRedacted.snapshot_id || shortId("ctxsnap");
+    snapshotRedacted.snapshot_id = snapshotId;
+    snapshotRedacted.quality_checks = {
+      ...(snapshotRedacted.quality_checks || {}),
+      no_secret_leak: true,
+      not_empty: true
+    };
+    const snapshotArtifactAbs = writeRunArtifact(
+      runId,
+      `context_snapshot_${snapshotId}.json`,
+      `${JSON.stringify({ ...snapshotRedacted, source_summary: sourceSummary }, null, 2)}\n`
+    );
+    const snapshotArtifactPath = toRepoRelative(snapshotArtifactAbs);
+    const snapshotRow = recordContextSnapshot({
+      snapshotId,
+      sessionId: resolvedSessionId,
+      runId,
+      sourceFromSeq: sourceFrom,
+      sourceToSeq: sourceTo,
+      snapshotJson: JSON.stringify(snapshotRedacted),
+      tokenEstimateBefore: tokenBefore,
+      tokenEstimateAfter: tokenAfter,
+      status: "completed",
+      reason: reason || "manual_compaction",
+      qualityJson: JSON.stringify(snapshotRedacted.quality_checks || {}),
+      idempotencyKey,
+      artifactPath: snapshotArtifactPath
+    });
+
+    const compactionArtifactAbs = writeRunArtifact(
+      runId,
+      `context_compaction_${compactionRow.id}.json`,
+      `${JSON.stringify(
+        {
+          context_compaction_id: compactionRow.id,
+          snapshot_id: snapshotRow.id,
+          trigger_type: triggerType,
+          reason,
+          session_id: resolvedSessionId,
+          run_id: runId,
+          source_event_from_seq: sourceFrom,
+          source_event_to_seq: sourceTo,
+          legacy_compact_run_id: legacyCompact.compact_run?.id || null
+        },
+        null,
+        2
+      )}\n`
+    );
+    const compactionArtifactPath = toRepoRelative(compactionArtifactAbs);
+
+    const patched = patchContextCompaction(compactionRow.id, {
+      completed_at: nowIso(),
+      status: "completed",
+      snapshot_id: snapshotRow.id,
+      source_from_seq: sourceFrom,
+      source_to_seq: sourceTo,
+      artifact_path: compactionArtifactPath
+    });
+    patchContextSettingsCompactStatus(resolvedSessionId, {
+      last_compact_status: "completed",
+      last_snapshot_id: snapshotRow.id,
+      last_compact_reason: summarizeText(reason || "", 280),
+      last_compacted_at: nowIso()
+    });
+
+    emitEvent(runId, "context.compaction.completed", {
+      session_id: resolvedSessionId,
+      run_id: runId,
+      context_compaction_id: compactionRow.id,
+      trigger_type: triggerType,
+      reason: summarizeText(reason || "manual_compaction", 280),
+      snapshot_id: snapshotRow.id,
+      source_event_range: {
+        from_seq: sourceFrom,
+        to_seq: sourceTo
+      },
+      token_estimate_before: tokenBefore,
+      token_estimate_after: tokenAfter,
+      quality_checks: snapshotRedacted.quality_checks || {},
+      status: "completed",
+      manual
+    });
+    pendingContextCompactionsByRun.delete(runId);
+    return {
+      ok: true,
+      context_compaction: patched || compactionRow,
+      context_snapshot: snapshotRow,
+      compact_run: legacyCompact.compact_run,
+      compact_artifact: legacyCompact.compact_artifact,
+      compact_mapping: legacyCompact.compact_mapping
+    };
+  } catch (error) {
+    return fail(
+      String(error instanceof Error ? error.message.split(":")[0] : "context_compaction_exception"),
+      error instanceof Error ? error.message : String(error)
+    );
+  } finally {
+    contextCompactionSessionLocks.delete(resolvedSessionId);
+  }
+}
+
+function flushPendingContextCompactionIfSafe(runId, triggeringEventType, triggeringPayload = {}) {
+  const queued = pendingContextCompactionsByRun.get(runId);
+  if (!queued) {
+    return null;
+  }
+  const boundary = evaluateCompactionBoundary(runId);
+  if (!boundary.safe) {
+    return null;
+  }
+  pendingContextCompactionsByRun.delete(runId);
+  return runContextCompaction({
+    runId,
+    sessionId: queued.session_id || resolveSessionIdForRun(runId, triggeringPayload?.session_id || null),
+    triggerType: "auto",
+    reason: queued.reason || `queued_after_${String(triggeringEventType || "event")}`,
+    manual: false,
+    requestedBy: queued.requested_by || "auto_queue",
+    timeoutMs: 15000
+  });
+}
+
+function maybeAutoCompactRun(runId, triggeringEventType, triggeringPayload = {}) {
+  if (!compactPolicyContract?.auto_trigger || disableAutoCompact) {
     return;
   }
   const type = String(triggeringEventType || "");
-  if (type.startsWith("compact.") || type.startsWith("stale.running.")) {
+  if (
+    type.startsWith("compact.") ||
+    type.startsWith("context.compaction.") ||
+    type.startsWith("autocontext.") ||
+    type.startsWith("stale.running.")
+  ) {
     return;
   }
-  const run = dbGet("SELECT id, status FROM runs WHERE id = ?", runId);
-  if (!run || String(run.status) !== "running") {
+  const decision = shouldAutoCompactForEvent(runId, type, triggeringPayload || {});
+  if (!decision.should) {
     return;
   }
-  const threshold = parsePositiveInt(compactPolicyContract?.event_count_threshold, 12);
-  const maxSeq = Number(dbGet("SELECT COALESCE(MAX(seq), 0) AS n FROM events WHERE run_id = ?", runId)?.n || 0);
-  const latestCompleted = dbGet(
-    "SELECT * FROM compact_runs WHERE run_id = ? AND status = 'completed' ORDER BY completed_at DESC, started_at DESC LIMIT 1",
-    runId
-  );
-  const sourceFrom = latestCompleted ? Number(latestCompleted.source_event_to_seq || 0) + 1 : 1;
-  if (maxSeq - sourceFrom + 1 < threshold) {
-    return;
-  }
-  createCompactForRun(runId, "auto", {
-    sourceEventFromSeq: sourceFrom,
-    sourceEventToSeq: maxSeq
+  runContextCompaction({
+    runId,
+    sessionId: decision.session_id,
+    triggerType: "auto",
+    reason: decision.reason || "auto_threshold",
+    manual: false,
+    requestedBy: "auto_policy",
+    timeoutMs: 15000
   });
 }
 
@@ -23265,6 +28090,9 @@ function buildRunHydrationProjection(runId, baselineRunId = null, options = {}) 
   const includeLineage = options.includeLineage === true;
   const lineageSummary = includeLineage ? lineageSummaryForRun(runId) : null;
   const useCompact = options.useCompact === true;
+  const resolvedSessionId = resolveSessionIdForRun(runId, null);
+  const latestContextSnapshotRow = resolvedSessionId ? latestContextSnapshotForSession(resolvedSessionId) : null;
+  const latestContextSnapshotPayload = parseSnapshotJsonRow(latestContextSnapshotRow);
   let hydrateMode = "raw";
   let compactRun = null;
   let compactMapping = null;
@@ -23272,32 +28100,46 @@ function buildRunHydrationProjection(runId, baselineRunId = null, options = {}) 
   let compactFallbackReason = null;
   let compactFromLineage = false;
   if (useCompact) {
-    let compactBundle = readLatestCompactBundle(runId);
-    if (!compactBundle.ok && lineageSummary?.parent?.source_compact_run_id) {
-      compactBundle = readCompactBundleByCompactRunId(lineageSummary.parent.source_compact_run_id);
-      if (compactBundle.ok) {
-        compactFromLineage = true;
+    if (latestContextSnapshotRow?.id) {
+      hydrateMode = "snapshot+delta";
+      deltaFromSeq = Number(latestContextSnapshotRow.source_to_seq || 0) + 1;
+      if (!loadedTables.includes("context_snapshots")) {
+        loadedTables.push("context_snapshots");
       }
-    }
-    if (compactBundle.ok) {
-      hydrateMode = "compact+delta";
-      compactRun = compactBundle.compact_run;
-      compactMapping = compactBundle.compact_mapping || null;
-      deltaFromSeq = compactFromLineage ? 1 : Number(compactRun.source_event_to_seq || 0) + 1;
-      const compactLoadedTables = Array.isArray(compactBundle.payload?.included_tables)
-        ? compactBundle.payload.included_tables
-        : [];
-      for (const name of compactLoadedTables) {
-        if (!loadedTables.includes(name)) {
-          loadedTables.push(name);
+      if (latestContextSnapshotRow.artifact_path) {
+        const rel = String(latestContextSnapshotRow.artifact_path).replace(/\\/g, "/");
+        if (!artifactsLoaded.includes(rel)) {
+          artifactsLoaded.push(rel);
         }
       }
-      if (compactRun.artifact_path && !artifactsLoaded.includes(String(compactRun.artifact_path).replace(/\\/g, "/"))) {
-        artifactsLoaded.push(String(compactRun.artifact_path).replace(/\\/g, "/"));
+    } else {
+      let compactBundle = readLatestCompactBundle(runId);
+      if (!compactBundle.ok && lineageSummary?.parent?.source_compact_run_id) {
+        compactBundle = readCompactBundleByCompactRunId(lineageSummary.parent.source_compact_run_id);
+        if (compactBundle.ok) {
+          compactFromLineage = true;
+        }
       }
-    } else if (compactBundle.reason !== "compact_not_found") {
-      hydrateMode = "fallback_raw";
-      compactFallbackReason = compactBundle.reason;
+      if (compactBundle.ok) {
+        hydrateMode = "compact+delta";
+        compactRun = compactBundle.compact_run;
+        compactMapping = compactBundle.compact_mapping || null;
+        deltaFromSeq = compactFromLineage ? 1 : Number(compactRun.source_event_to_seq || 0) + 1;
+        const compactLoadedTables = Array.isArray(compactBundle.payload?.included_tables)
+          ? compactBundle.payload.included_tables
+          : [];
+        for (const name of compactLoadedTables) {
+          if (!loadedTables.includes(name)) {
+            loadedTables.push(name);
+          }
+        }
+        if (compactRun.artifact_path && !artifactsLoaded.includes(String(compactRun.artifact_path).replace(/\\/g, "/"))) {
+          artifactsLoaded.push(String(compactRun.artifact_path).replace(/\\/g, "/"));
+        }
+      } else if (compactBundle.reason !== "compact_not_found") {
+        hydrateMode = "fallback_raw";
+        compactFallbackReason = compactBundle.reason;
+      }
     }
   }
 
@@ -23320,11 +28162,14 @@ function buildRunHydrationProjection(runId, baselineRunId = null, options = {}) 
     compact_id: compactRun?.id || null,
     compact_artifact_path: compactRun?.artifact_path || null,
     compact_integrity_hash: compactRun?.integrity_hash || null,
+    compact_snapshot_id: latestContextSnapshotRow?.id || null,
+    compact_snapshot_artifact_path: latestContextSnapshotRow?.artifact_path || null,
     compact_fallback_reason: compactFallbackReason,
     compact_from_lineage: compactFromLineage,
     lineage_parent_run_id: lineageSummary?.parent?.parent_run_id || null,
     lineage_child_count: Number(lineageSummary?.child_count || 0),
-    lineage_summary: lineageSummary
+    lineage_summary: lineageSummary,
+    latest_user_request_from_snapshot: latestContextSnapshotPayload?.latest_user_request || null
   };
 
   return {
@@ -23340,7 +28185,10 @@ function buildRunHydrationProjection(runId, baselineRunId = null, options = {}) 
     deltaFromSeq,
     includeLineage,
     lineageSummary,
-    compactFromLineage
+    compactFromLineage,
+    contextSnapshotRow: latestContextSnapshotRow || null,
+    contextSnapshotPayload: latestContextSnapshotPayload || null,
+    resolvedSessionId: resolvedSessionId || null
   };
 }
 
@@ -23491,6 +28339,7 @@ function buildAndRecordContextProjection(runId, options = {}) {
       context_projection_id: row.id,
       baseline_run_id: built.projection.baseline_run_id,
       compact_run_id: built.projection.compact_run_id,
+      compact_snapshot_id: built.projection.compact_snapshot_id || null,
       hydration_mode: built.projection.hydration_mode,
       reconnect_cursor: built.projection.reconnect_cursor,
       resume_cursor: built.projection.resume_cursor,
@@ -23563,8 +28412,10 @@ function hydrateRunFromLedger(runId, baselineRunId = null, options = {}) {
       hydrate_mode: build.projection.hydrate_mode,
       delta_from_seq: build.projection.delta_from_seq,
       compact_run_id: build.projection.compact_run_id,
+      compact_snapshot_id: build.projection.compact_snapshot_id,
       lineage_parent_run_id: build.projection.lineage_parent_run_id,
-      lineage_child_count: build.projection.lineage_child_count
+      lineage_child_count: build.projection.lineage_child_count,
+      latest_user_request_from_snapshot: build.projection.latest_user_request_from_snapshot
     }),
     artifactPath: projectionRel,
     createdAt: nowIso()
@@ -23592,6 +28443,8 @@ function hydrateRunFromLedger(runId, baselineRunId = null, options = {}) {
     hydrate_mode: build.projection.hydrate_mode,
     delta_from_seq: build.projection.delta_from_seq,
     compact_run_id: build.projection.compact_run_id,
+    compact_snapshot_id: build.projection.compact_snapshot_id,
+    compact_snapshot_artifact_path: build.projection.compact_snapshot_artifact_path,
     compact_artifact_path: build.projection.compact_artifact_path,
     compact_integrity_hash: build.projection.compact_integrity_hash,
     compact_fallback_reason: build.projection.compact_fallback_reason,
@@ -23619,13 +28472,31 @@ function hydrateRunFromLedger(runId, baselineRunId = null, options = {}) {
     emitEvents: true
   });
 
+  const resolvedSessionId = resolveSessionIdForRun(runId, null);
+  const latestSnapshotRow = resolvedSessionId ? latestContextSnapshotForSession(resolvedSessionId) : null;
+  let contextReceipt = latestRunContextReceipt(runId);
+  if (
+    options.recordReceipt !== false &&
+    (!contextReceipt ||
+      String(contextReceipt.snapshot_id || "") !== String(latestSnapshotRow?.id || ""))
+  ) {
+    const issued = issueRunContextReceipt({
+      runId,
+      sessionId: resolvedSessionId,
+      stepId: latestStepIdForRun(runId),
+      consumer: "hydrate"
+    });
+    contextReceipt = issued?.row || contextReceipt;
+  }
+
   return {
     hydration: hydrationRow,
     projection: build.projection,
     projection_row: projectionRow,
     lineage: includeLineage ? build.projection.lineage_summary : null,
     context_projection: contextProjection?.projection || null,
-    context_projection_row: contextProjection?.context_projection_row || null
+    context_projection_row: contextProjection?.context_projection_row || null,
+    context_receipt: contextReceipt || null
   };
 }
 
@@ -27878,21 +32749,30 @@ function restorePendingApprovals(source = "startup") {
 function restorePendingAuthSessions(source = "startup") {
   const rows = dbAll(
     `SELECT * FROM auth_sessions
-     WHERE status IN ('required', 'mode_selected', 'challenge_emitted', 'challenge_presented', 'pending_user_action', 'user_submitted', 'verifying', 'failed')
+     WHERE status IN ('required', 'mode_selected', 'challenge_emitted', 'challenge_presented', 'pending_user_action', 'waiting_user', 'user_submitted', 'verifying', 'failed')
      ORDER BY created_at ASC
      LIMIT 200`
   );
   const restored = [];
   for (const row of rows) {
-    emitEvent(row.run_id, "auth.pending_user_action", {
-      auth_session_id: row.id,
-      step_id: row.step_id,
-      mode: row.mode,
-      status: "pending_user_action",
-      required_capability: row.required_capability,
-      restore_source: source,
-      timeout_at: row.timeout_at
-    });
+    if ([AUTH_STATUS_PENDING_USER_ACTION, AUTH_STATUS_WAITING_USER, "failed"].includes(String(row.status || ""))) {
+      emitAuthWaitingUser(row, {
+        error_code: row.last_error_code || null,
+        retryable: String(row.status || "") === "failed",
+        lifecycle_source: "pending_restore",
+        restore_source: source
+      });
+    } else {
+      emitEvent(row.run_id, "auth.state.restored", {
+        auth_session_id: row.id,
+        step_id: row.step_id,
+        mode: row.mode,
+        status: row.status,
+        required_capability: row.required_capability,
+        restore_source: source,
+        timeout_at: row.timeout_at
+      });
+    }
     restored.push(row.id);
   }
   return restored;
@@ -27901,7 +32781,7 @@ function restorePendingAuthSessions(source = "startup") {
 function cleanupStaleSerialLocksViaEvents(reason = "maintenance_cleanup") {
   const authRows = dbAll(
     `SELECT * FROM auth_sessions
-     WHERE status IN ('required', 'mode_selected', 'challenge_emitted', 'challenge_presented', 'pending_user_action', 'user_submitted', 'verifying', 'failed')
+     WHERE status IN ('required', 'mode_selected', 'challenge_emitted', 'challenge_presented', 'pending_user_action', 'waiting_user', 'user_submitted', 'verifying', 'failed')
      ORDER BY created_at ASC
      LIMIT 500`
   );
@@ -30497,12 +35377,12 @@ function maybeEnsureWorkspaceBindingForEvent(runId, eventType, payload) {
   });
 }
 
-function maybeAssembleAutoContextForStep(runId, payload) {
+function maybeAssembleAutoContextForStep(runId, payload, triggerPhase = "step.requested") {
   const stepId = typeof payload?.step_id === "string" && payload.step_id.trim() ? payload.step_id.trim() : null;
   if (!stepId) {
     return null;
   }
-  return assembleAutoContext({
+  const assembled = assembleAutoContext({
     db,
     repoRoot,
     runsRoot,
@@ -30512,6 +35392,42 @@ function maybeAssembleAutoContextForStep(runId, payload) {
     shortId,
     textHash
   });
+  emitAutoContextCompilation({
+    runId,
+    stepId,
+    sessionId: typeof payload?.session_id === "string" ? payload.session_id : null,
+    triggerPhase,
+    requestedBy: "emitEvent_hook"
+  });
+  return assembled;
+}
+
+function maybeCompileAutoContextForEvent(runId, type, payload) {
+  const eventType = String(type || "");
+  if (eventType === "step.requested") {
+    return maybeAssembleAutoContextForStep(runId, payload, "run.start.pre_execute");
+  }
+  if (eventType === "repair.started") {
+    const stepId = typeof payload?.step_id === "string" && payload.step_id.trim() ? payload.step_id.trim() : null;
+    return emitAutoContextCompilation({
+      runId,
+      stepId,
+      sessionId: typeof payload?.session_id === "string" ? payload.session_id : null,
+      triggerPhase: "repair.pre_round",
+      requestedBy: "emitEvent_hook"
+    });
+  }
+  if (eventType === "acceptance.started") {
+    const stepId = typeof payload?.step_id === "string" && payload.step_id.trim() ? payload.step_id.trim() : null;
+    return emitAutoContextCompilation({
+      runId,
+      stepId,
+      sessionId: typeof payload?.session_id === "string" ? payload.session_id : null,
+      triggerPhase: "acceptance.pre_check",
+      requestedBy: "emitEvent_hook"
+    });
+  }
+  return null;
 }
 
 function parseSemver(rawText) {
@@ -30688,6 +35604,7 @@ function runVercelDeployAttempt({
   retryNumber = 0
 }) {
   const commandSummary = `${summarizeText(executable, 128)} ${args.map((x) => summarizeText(x, 64)).join(" ")}`.trim();
+  const startedAt = nowIso();
   const deployRow = recordDeployRun({
     runId,
     provider,
@@ -30706,10 +35623,16 @@ function runVercelDeployAttempt({
     deploy_run_id: deployRow.id,
     provider,
     deploy_mode: deployMode,
+    command: commandSummary,
+    cwd: workingRoot,
+    shell: "direct_exec",
+    started_at: startedAt,
+    startedAt,
     command_summary: commandSummary,
     retry_number: retryNumber
   });
   const result = runLocalCommand(executable, args, 240000, { cwd: workingRoot });
+  const finishedAt = nowIso();
   const releaseUrl = parseReleaseUrlFromText(`${result.stdout}\n${result.stderr}`);
   if (result.ok && releaseUrl) {
     const redactedUrl = redactReleaseUrl(releaseUrl);
@@ -30738,6 +35661,19 @@ function runVercelDeployAttempt({
       step_id: stepId,
       case_id: caseId,
       deploy_run_id: patched.id,
+      command: commandSummary,
+      cwd: workingRoot,
+      shell: result.shell || "direct_exec",
+      exit_code: normalizeExitCode(result.status),
+      exitCode: normalizeExitCode(result.status),
+      duration_ms: Number(result.duration_ms || 0),
+      durationMs: Number(result.duration_ms || 0),
+      started_at: startedAt,
+      startedAt,
+      finished_at: finishedAt,
+      finishedAt,
+      stdout: summarizeText(result.stdout, 1400),
+      stderr: summarizeText(result.stderr || result.error_message || "", 1400),
       deploy_status: patched.deploy_status,
       release_url_redacted: patched.release_url_redacted,
       receipt_path: patched.receipt_path
@@ -30763,6 +35699,19 @@ function runVercelDeployAttempt({
     step_id: stepId,
     case_id: caseId,
     deploy_run_id: patched.id,
+    command: commandSummary,
+    cwd: workingRoot,
+    shell: result.shell || "direct_exec",
+    exit_code: normalizeExitCode(result.status),
+    exitCode: normalizeExitCode(result.status),
+    duration_ms: Number(result.duration_ms || 0),
+    durationMs: Number(result.duration_ms || 0),
+    started_at: startedAt,
+    startedAt,
+    finished_at: finishedAt,
+    finishedAt,
+    stdout: summarizeText(result.stdout, 1400),
+    stderr: summarizeText(result.stderr || result.error_message || "", 1400),
     deploy_status: patched.deploy_status,
     failure_class: failureClass,
     stdout_summary: summarizeText(result.stdout, 512),
@@ -31293,12 +36242,30 @@ async function executeEvalV1Run(runId, input = {}) {
       step_id: stepId,
       case_id: casePlan.caseId,
       deploy_run_id: deployRow.id,
+      command: deployRow.command_summary,
+      cwd: workspacePath,
+      shell: "dry_run",
+      started_at: nowIso(),
+      startedAt: nowIso(),
       command_summary: deployRow.command_summary
     });
     emitEvent(runId, "deploy.command.completed", {
       step_id: stepId,
       case_id: casePlan.caseId,
       deploy_run_id: deployRow.id,
+      command: deployRow.command_summary,
+      cwd: workspacePath,
+      shell: "dry_run",
+      exit_code: 0,
+      exitCode: 0,
+      duration_ms: 0,
+      durationMs: 0,
+      started_at: nowIso(),
+      startedAt: nowIso(),
+      finished_at: nowIso(),
+      finishedAt: nowIso(),
+      stdout: "deploy_dry_run_completed",
+      stderr: "",
       deploy_status: deployRow.deploy_status,
       receipt_path: deployRow.receipt_path
     });
@@ -34077,36 +39044,795 @@ function defaultVerificationCommandsForTask(taskType) {
   return ["node scripts/lint-check.mjs", "node --check src/server.js", "node tests/server.test.mjs", "node scripts/smoke.mjs"];
 }
 
-function normalizeVerificationCommandsForTask(taskType, proposedCommands) {
+function detectWorkspacePackageManagerForVerification(workspaceRoot) {
+  const root = String(workspaceRoot || "").trim();
+  if (!root) {
+    return "npm";
+  }
+  if (fs.existsSync(path.join(root, "pnpm-lock.yaml"))) {
+    return "pnpm";
+  }
+  if (fs.existsSync(path.join(root, "yarn.lock"))) {
+    return "yarn";
+  }
+  return "npm";
+}
+
+function readWorkspacePackageScriptsForVerification(workspaceRoot) {
+  const root = String(workspaceRoot || "").trim();
+  if (!root) {
+    return {};
+  }
+  const packageJsonPath = path.join(root, "package.json");
+  if (!fs.existsSync(packageJsonPath)) {
+    return {};
+  }
+  try {
+    const parsed = safeParseJson(fs.readFileSync(packageJsonPath, "utf8"));
+    return parsed && typeof parsed.scripts === "object" && parsed.scripts ? parsed.scripts : {};
+  } catch {
+    return {};
+  }
+}
+
+function inferVerificationExtHints(targetFiles) {
+  const hints = new Set();
+  for (const file of Array.isArray(targetFiles) ? targetFiles : []) {
+    const ext = path.extname(String(file || "")).toLowerCase();
+    if (!ext) {
+      continue;
+    }
+    hints.add(ext);
+  }
+  return hints;
+}
+
+function isNodeScriptDirectlyExecutable(workspaceRoot, relPath) {
+  const rel = normalizeRelativeFilePath(relPath);
+  if (!rel) {
+    return false;
+  }
+  const abs = path.join(String(workspaceRoot || "").trim(), rel);
+  if (!fs.existsSync(abs)) {
+    return false;
+  }
+  try {
+    if (!fs.statSync(abs).isFile()) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  let text = "";
+  try {
+    text = fs.readFileSync(abs, "utf8");
+  } catch {
+    return false;
+  }
+  const hasExportPattern = /module\.exports\s*=|exports\.[a-zA-Z_$]/.test(text);
+  const hasRuntimeEntryPattern =
+    /if\s*\(\s*require\.main\s*===\s*module\s*\)|process\.exit\(|describe\s*\(|it\s*\(|test\s*\(|runCase\s*\(|main\s*\(\s*\)/.test(
+      text
+    );
+  if (hasExportPattern && !hasRuntimeEntryPattern) {
+    return false;
+  }
+  return true;
+}
+
+function isVerificationCommandLikelyRunnable(commandText, workspaceRoot, scripts = {}) {
+  const parsed = splitCommand(commandText);
+  const command = String(parsed.command || "").toLowerCase();
+  const args = Array.isArray(parsed.args) ? parsed.args : [];
+  if (!command) {
+    return false;
+  }
+  if ((command === "npm" || command === "pnpm") && args[0] === "run" && args[1]) {
+    return Object.prototype.hasOwnProperty.call(scripts, String(args[1]));
+  }
+  if (command === "yarn" && args.length > 0 && !String(args[0]).startsWith("-")) {
+    return Object.prototype.hasOwnProperty.call(scripts, String(args[0]));
+  }
+  if (command === "node" && args[0] === "--check" && args[1]) {
+    const rel = normalizeRelativeFilePath(args[1]);
+    if (!rel) {
+      return false;
+    }
+    return fs.existsSync(path.join(workspaceRoot, rel));
+  }
+  if (command === "node" && args[0]) {
+    const rel = normalizeRelativeFilePath(args[0]);
+    if (rel && /\.(?:mjs|cjs|js)$/i.test(rel)) {
+      return isNodeScriptDirectlyExecutable(workspaceRoot, rel);
+    }
+  }
+  return true;
+}
+
+function buildWorkspaceVerificationSelection({
+  workspaceRoot,
+  taskType,
+  proposedCommands,
+  fallbackCommands,
+  targetFiles,
+  promptText,
+  includeFallback = true,
+  maxCommands = 8
+}) {
+  const root = String(workspaceRoot || "").trim();
+  const scripts = readWorkspacePackageScriptsForVerification(root);
+  const packageManager = detectWorkspacePackageManagerForVerification(root);
+  const extHints = inferVerificationExtHints(targetFiles);
+  const promptLower = String(promptText || "").toLowerCase();
+  const records = new Map();
+  const push = (commandText, score, reason, source) => {
+    const command = String(commandText || "").trim();
+    if (!command) {
+      return;
+    }
+    const existing = records.get(command);
+    if (existing) {
+      existing.score = Math.max(existing.score, Number(score || 0));
+      existing.reasons.add(String(reason || "unknown"));
+      existing.sources.add(String(source || "unknown"));
+      return;
+    }
+    records.set(command, {
+      command,
+      score: Number(score || 0),
+      reasons: new Set([String(reason || "unknown")]),
+      sources: new Set([String(source || "unknown")])
+    });
+  };
+
+  const proposed = Array.isArray(proposedCommands)
+    ? proposedCommands.map((x) => String(x || "").trim()).filter(Boolean)
+    : [];
+  for (const command of proposed) {
+    push(command, 0.98, "model_proposed", "model");
+  }
+
+  for (const [scriptName, scriptBody] of Object.entries(scripts)) {
+    const lower = String(scriptName || "").toLowerCase();
+    if (!/(test|verify|check|lint|typecheck|smoke|ci|build|repro|scenario|case)/i.test(lower)) {
+      continue;
+    }
+    const runCommand =
+      packageManager === "yarn"
+        ? `yarn ${scriptName}`
+        : `${packageManager} run ${scriptName}`;
+    let score = 0.76;
+    if (/(test|verify|check)/i.test(lower)) {
+      score += 0.12;
+    }
+    if (/(lint|typecheck)/i.test(lower) && /(lint|type|check)/i.test(promptLower)) {
+      score += 0.08;
+    }
+    if (/(smoke|ci)/i.test(lower) && /(smoke|release|ship|deploy)/i.test(promptLower)) {
+      score += 0.06;
+    }
+    if (/(build)/i.test(lower) && /(build|compile|bundle|构建)/i.test(promptLower)) {
+      score += 0.08;
+    }
+    if (/(repro|scenario|case)/i.test(lower) && /(repro|复现|重现|case)/i.test(promptLower)) {
+      score += 0.09;
+    }
+    if (extHints.has(".py") && /(python|pytest)/i.test(String(scriptBody || ""))) {
+      score += 0.05;
+    }
+    push(runCommand, Math.min(0.98, score), `package_script:${scriptName}`, "workspace_signal");
+  }
+
+  const hasPySignal =
+    extHints.has(".py") ||
+    fs.existsSync(path.join(root, "pyproject.toml")) ||
+    fs.existsSync(path.join(root, "requirements.txt"));
+  if (hasPySignal) {
+    push("python -m pytest", 0.82, "python_test_signal", "workspace_signal");
+    const pyTargets = (Array.isArray(targetFiles) ? targetFiles : []).filter((x) => String(x || "").toLowerCase().endsWith(".py"));
+    if (pyTargets.length > 0) {
+      push(`python -m py_compile ${pyTargets.slice(0, 4).join(" ")}`, 0.71, "python_compile_signal", "workspace_signal");
+    }
+  }
+
+  const hasGoSignal = extHints.has(".go") || fs.existsSync(path.join(root, "go.mod"));
+  if (hasGoSignal) {
+    push("go test ./...", 0.84, "go_test_signal", "workspace_signal");
+  }
+
+  const hasRustSignal = extHints.has(".rs") || fs.existsSync(path.join(root, "Cargo.toml"));
+  if (hasRustSignal) {
+    push("cargo check", 0.8, "rust_check_signal", "workspace_signal");
+    push("cargo test --no-run", 0.76, "rust_test_signal", "workspace_signal");
+  }
+
+  const hasJavaSignal =
+    extHints.has(".java") ||
+    fs.existsSync(path.join(root, "pom.xml")) ||
+    fs.existsSync(path.join(root, "build.gradle")) ||
+    fs.existsSync(path.join(root, "build.gradle.kts"));
+  if (hasJavaSignal) {
+    if (fs.existsSync(path.join(root, "mvnw")) || fs.existsSync(path.join(root, "mvnw.cmd"))) {
+      push(process.platform === "win32" ? "mvnw.cmd -q -DskipTests package" : "./mvnw -q -DskipTests package", 0.8, "maven_wrapper_signal", "workspace_signal");
+    }
+    push("mvn -q -DskipTests package", 0.74, "maven_signal", "workspace_signal");
+  }
+
+  const hasGradleSignal = fs.existsSync(path.join(root, "gradlew")) || fs.existsSync(path.join(root, "gradlew.bat"));
+  if (hasGradleSignal) {
+    push(process.platform === "win32" ? "gradlew.bat test" : "./gradlew test", 0.78, "gradle_wrapper_signal", "workspace_signal");
+  }
+
+  const hasJsSignal =
+    extHints.has(".js") || extHints.has(".mjs") || extHints.has(".cjs") || extHints.has(".ts") || extHints.has(".tsx");
+  if (hasJsSignal) {
+    for (const relRaw of Array.isArray(targetFiles) ? targetFiles : []) {
+      const rel = normalizeRelativeFilePath(relRaw);
+      if (!rel) {
+        continue;
+      }
+      const ext = path.extname(rel).toLowerCase();
+      if (![".js", ".mjs", ".cjs"].includes(ext)) {
+        continue;
+      }
+      const base = path.basename(rel, ext);
+      const testCandidates = [
+        `test/${base}.test.js`,
+        `tests/${base}.test.js`,
+        `test/${base}.spec.js`,
+        `tests/${base}.spec.js`
+      ];
+      for (const testRel of testCandidates) {
+        if (!fs.existsSync(path.join(root, testRel))) {
+          continue;
+        }
+        if (isNodeScriptDirectlyExecutable(root, testRel)) {
+          push(`node ${testRel}`, 0.93, "target_specific_test_signal", "workspace_signal");
+        } else {
+          const runnerCandidates = ["test/run-all.test.js", "tests/run-all.test.js", "test/index.test.js", "tests/index.test.js"];
+          let runnerInjected = false;
+          for (const runnerRel of runnerCandidates) {
+            if (!fs.existsSync(path.join(root, runnerRel))) {
+              continue;
+            }
+            if (!isNodeScriptDirectlyExecutable(root, runnerRel)) {
+              continue;
+            }
+            push(`node ${runnerRel}`, 0.95, "target_specific_runner_signal", "workspace_signal");
+            runnerInjected = true;
+            break;
+          }
+          if (!runnerInjected) {
+            push(`node --check ${rel}`, 0.66, "target_specific_fallback_syntax_check", "workspace_signal");
+          }
+        }
+        break;
+      }
+    }
+  }
+  if (hasJsSignal && Object.keys(scripts).length === 0) {
+    const checkTargets = (Array.isArray(targetFiles) ? targetFiles : [])
+      .filter((x) => /\.(?:js|mjs|cjs)$/i.test(String(x || "")))
+      .slice(0, 3);
+    for (const rel of checkTargets) {
+      push(`node --check ${rel}`, 0.7, "node_check_signal", "workspace_signal");
+    }
+  }
+  if (/(repro|复现|重现|case)/i.test(promptLower)) {
+    for (const relRaw of Array.isArray(targetFiles) ? targetFiles : []) {
+      const rel = normalizeRelativeFilePath(relRaw);
+      if (!rel) continue;
+      const ext = path.extname(rel).toLowerCase();
+      if (![".js", ".mjs", ".cjs", ".ts", ".tsx", ".py"].includes(ext)) continue;
+      const base = path.basename(rel, ext);
+      const reproCandidates = [
+        `test/${base}.repro.js`,
+        `tests/${base}.repro.js`,
+        `test/${base}.case.js`,
+        `tests/${base}.case.js`,
+        `tests/test_${base}.py`,
+        `test/test_${base}.py`
+      ];
+      for (const reproRel of reproCandidates) {
+        const abs = path.join(root, reproRel);
+        if (!fs.existsSync(abs)) continue;
+        if (/\.py$/i.test(reproRel)) {
+          push(`python ${reproRel}`, 0.92, "focused_repro_signal", "workspace_signal");
+        } else {
+          push(`node ${reproRel}`, 0.92, "focused_repro_signal", "workspace_signal");
+        }
+        break;
+      }
+    }
+  }
+
+  if (includeFallback) {
+    for (const fallbackCommand of Array.isArray(fallbackCommands) ? fallbackCommands : []) {
+      push(fallbackCommand, 0.42, `task_fallback:${taskType}`, "fallback");
+    }
+  }
+
+  const recordsList = Array.from(records.values());
+  const runnableRecords = recordsList.filter((row) =>
+    isVerificationCommandLikelyRunnable(row.command, root, scripts)
+  );
+  const effectiveRecords = runnableRecords.length > 0 ? runnableRecords : recordsList;
+  for (const row of effectiveRecords) {
+    const commandLower = row.command.toLowerCase();
+    if (/(verify|test|check)/i.test(promptLower) && /(test|verify|check)/i.test(commandLower)) {
+      row.score += 0.06;
+      row.reasons.add("prompt_verify_signal");
+    }
+    if (/(lint|format|style)/i.test(promptLower) && /(lint|format)/i.test(commandLower)) {
+      row.score += 0.06;
+      row.reasons.add("prompt_lint_signal");
+    }
+    if (/(smoke|health|release|deploy)/i.test(promptLower) && /(smoke|ci)/i.test(commandLower)) {
+      row.score += 0.04;
+      row.reasons.add("prompt_smoke_signal");
+    }
+    if (/(build|compile|bundle|构建)/i.test(promptLower) && /(build|compile|bundle)/i.test(commandLower)) {
+      row.score += 0.05;
+      row.reasons.add("prompt_build_signal");
+    }
+    if (/(repro|复现|重现|case)/i.test(promptLower) && /(repro|scenario|case)/i.test(commandLower)) {
+      row.score += 0.07;
+      row.reasons.add("prompt_repro_signal");
+    }
+    row.score = Math.max(0, Math.min(0.999, Number(row.score.toFixed(3))));
+  }
+
+  effectiveRecords.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    if (a.command.length !== b.command.length) {
+      return a.command.length - b.command.length;
+    }
+    return a.command.localeCompare(b.command);
+  });
+
+  const trimmed = effectiveRecords.slice(0, Math.max(1, Math.min(20, Number(maxCommands || 8))));
+  return {
+    commands: trimmed.map((row) => row.command),
+    candidates: trimmed.map((row) => ({
+      command: row.command,
+      score: row.score,
+      reasons: Array.from(row.reasons),
+      sources: Array.from(row.sources)
+    })),
+    signals: {
+      package_manager: packageManager,
+      package_scripts_detected: Object.keys(scripts),
+      ext_hints: Array.from(extHints),
+      prompt_hints: {
+        verify: /(verify|test|check)/i.test(promptLower),
+        lint: /(lint|format|style)/i.test(promptLower),
+        smoke: /(smoke|health|release|deploy)/i.test(promptLower),
+        build: /(build|compile|bundle|构建)/i.test(promptLower),
+        repro: /(repro|复现|重现|case)/i.test(promptLower)
+      },
+      workspace_root: root || null
+    }
+  };
+}
+
+function normalizeVerificationCommandsForTask(taskType, proposedCommands, options = {}) {
   const fallback = defaultVerificationCommandsForTask(taskType);
   const proposed = Array.isArray(proposedCommands)
     ? proposedCommands.map((x) => String(x || "").trim()).filter((x) => x.length > 0)
     : [];
-  // Keep deterministic and executable verify matrix for polyglot representative tasks.
-  if (
-    taskType === "frontend_fix" ||
-    taskType === "backend_fix" ||
-    taskType === "fullstack_feature" ||
-    taskType === "worker_patch" ||
-    taskType === "review_auto_repair" ||
-    taskType === "frontend_nextjs_fix" ||
-    taskType === "frontend_vue_fix" ||
-    taskType === "backend_node_fix" ||
-    taskType === "polyglot_go_patch" ||
-    taskType === "polyglot_java_patch" ||
-    taskType === "crossend_react_native_patch" ||
-    taskType === "polyglot_rust_patch" ||
-    taskType === "infra_terraform_patch" ||
-    taskType === "config_yaml_schema_patch" ||
-    taskType === "data_sql_migration_patch" ||
-    taskType === "backend_kotlin_patch" ||
-    taskType === "backend_swift_windows_patch" ||
-    taskType === "crossend_flutter_patch" ||
-    taskType === "crossend_flutter_web_patch"
-  ) {
-    return fallback;
+  const workspaceRoot = typeof options.workspaceRoot === "string" ? options.workspaceRoot.trim() : "";
+  const targetFiles = Array.isArray(options.targetFiles) ? options.targetFiles : [];
+  const promptText = String(options.promptText || "").trim();
+  const includeFallback = options.includeFallback !== false;
+  if (!workspaceRoot) {
+    return options.returnMetadata
+      ? {
+          commands: proposed.length > 0 ? proposed : fallback,
+          candidates: [],
+          signals: {
+            workspace_root: null,
+            fallback_only: true
+          }
+        }
+      : proposed.length > 0
+        ? proposed
+        : fallback;
   }
-  return proposed.length > 0 ? proposed : fallback;
+  const selection = buildWorkspaceVerificationSelection({
+    workspaceRoot,
+    taskType,
+    proposedCommands: proposed,
+    fallbackCommands: fallback,
+    targetFiles,
+    promptText,
+    includeFallback,
+    maxCommands: Math.max(1, Math.min(12, parsePositiveInt(options.maxCommands, 6)))
+  });
+  if (options.returnMetadata) {
+    return selection;
+  }
+  return selection.commands.length > 0 ? selection.commands : proposed.length > 0 ? proposed : fallback;
+}
+
+function detectVerifyLanguageFromSelectionSignals(signals = {}) {
+  const extHints = Array.isArray(signals?.ext_hints) ? signals.ext_hints.map((x) => String(x || "").toLowerCase()) : [];
+  const has = (ext) => extHints.includes(ext);
+  if (has(".js") || has(".mjs") || has(".cjs") || has(".ts") || has(".tsx")) return "node";
+  if (has(".py")) return "python";
+  if (has(".go")) return "go";
+  if (has(".java")) return "java";
+  if (has(".kt")) return "kotlin";
+  if (has(".rs")) return "rust";
+  if (has(".dart") || has(".flutter")) return "flutter";
+  return "unknown";
+}
+
+function verificationCoverageSummaryFromCommand(commandText, targetFiles = []) {
+  const command = String(commandText || "").trim().toLowerCase();
+  const files = Array.isArray(targetFiles) ? targetFiles : [];
+  if (!command) {
+    return {
+      coverage: "none",
+      reason: "no_selected_command",
+      checks: [],
+      limitations: ["no_verification_command_selected"]
+    };
+  }
+  if (
+    /\b(pytest|go test|cargo test|flutter test|gradlew(\.bat)? test|mvn(\.cmd|w(\.cmd)?)?\s+.*test|npm run test|pnpm run test|yarn test|node\s+.*(\.test|\.spec)\.|\bjest\b|\bvitest\b|\bmocha\b)/i.test(
+      command
+    )
+  ) {
+    return {
+      coverage: "behavioral",
+      reason: "test_execution_detected",
+      checks: ["behavioral_tests"],
+      limitations: []
+    };
+  }
+  if (/\b(build|compile|package|typecheck|lint|check)\b/i.test(command) && !/node\s+--check/.test(command)) {
+    return {
+      coverage: "partial",
+      reason: "build_or_lint_without_behavioral_tests",
+      checks: ["build_or_lint"],
+      limitations: ["behavioral_tests_not_explicit"]
+    };
+  }
+  if (/node\s+--check|python\s+-m\s+py_compile|cargo check|dart analyze|terraform validate/.test(command)) {
+    return {
+      coverage: "syntax",
+      reason: "syntax_or_static_check_only",
+      checks: ["syntax_or_static"],
+      limitations: ["behavioral_tests_not_explicit"]
+    };
+  }
+  return {
+    coverage: "partial",
+    reason: "generic_command_selected",
+    checks: ["generic_verify"],
+    limitations: files.length > 0 ? ["target_file_behavior_not_fully_proven"] : ["target_files_unknown"]
+  };
+}
+
+function resolveVerifyCommandToolState(commandLine, workspaceRoot) {
+  const parsed = splitCommand(String(commandLine || ""));
+  const executable = String(parsed.command || "").trim();
+  if (!executable) {
+    return {
+      tool: null,
+      available: false,
+      probe_status: "tool_missing",
+      detail: "command_missing"
+    };
+  }
+  if (/^(?:\.\/|\.\\)/.test(executable) || /(?:\.cmd|\.bat)$/i.test(executable)) {
+    const abs = path.resolve(String(workspaceRoot || repoRoot), executable);
+    const exists = fs.existsSync(abs);
+    return {
+      tool: executable,
+      available: exists,
+      probe_status: exists ? "available" : "tool_missing",
+      detail: exists ? "local_wrapper_detected" : "local_wrapper_missing"
+    };
+  }
+  const probeArgs = executable.toLowerCase() === "npm" || executable.toLowerCase() === "pnpm" || executable.toLowerCase() === "yarn"
+    ? ["--version"]
+    : executable.toLowerCase() === "python"
+      ? ["--version"]
+      : executable.toLowerCase() === "node"
+        ? ["--version"]
+        : ["--version"];
+  const probe = probeToolAvailability(executable, probeArgs, 1200);
+  return {
+    tool: executable,
+    available: Boolean(probe.available),
+    probe_status: probe.available ? "available" : "tool_missing",
+    detail: probe.summary || null
+  };
+}
+
+function buildGeneratedValidationScriptPlan({ language, targetFiles, selectedCommand, reasonCode }) {
+  const targets = Array.isArray(targetFiles) ? targetFiles.map((x) => normalizeRelativeFilePath(x)).filter(Boolean) : [];
+  const reason = String(reasonCode || "no_existing_test_command");
+  if (language === "python") {
+    return {
+      generated: true,
+      language: "python",
+      file_name: "generated_validation.py",
+      command_hint: "python generated_validation.py",
+      reason,
+      script_content:
+        "import pathlib, py_compile\nroot = pathlib.Path('.').resolve()\nfor rel in " +
+        `${JSON.stringify(targets.length > 0 ? targets : ["src"])}` +
+        ":\n    p = root / rel\n    if p.is_file() and p.suffix == '.py':\n        py_compile.compile(str(p), doraise=True)\nprint('generated_validation_pass')\n"
+    };
+  }
+  if (language === "go") {
+    return {
+      generated: true,
+      language: "go",
+      file_name: "generated_validation.sh",
+      command_hint: "go test ./...",
+      reason,
+      script_content: "#!/usr/bin/env sh\nset -eu\ngo test ./...\n"
+    };
+  }
+  if (language === "rust") {
+    return {
+      generated: true,
+      language: "rust",
+      file_name: "generated_validation.sh",
+      command_hint: "cargo check",
+      reason,
+      script_content: "#!/usr/bin/env sh\nset -eu\ncargo check\n"
+    };
+  }
+  const checks = (targets.length > 0 ? targets : ["src"]).map((rel) => `node --check ${rel}`).join("\n");
+  return {
+    generated: true,
+    language: language === "unknown" ? "node" : language,
+    file_name: "generated_validation.sh",
+    command_hint: selectedCommand || "node --check <target>",
+    reason,
+    script_content: `#!/usr/bin/env sh\nset -eu\n${checks}\n`
+  };
+}
+
+function buildVerifyResolverEvidencePayload({
+  workspaceRoot,
+  taskId,
+  attemptIndex,
+  targetFiles,
+  promptText,
+  selection,
+  noFileUpdates = false
+}) {
+  const commands = Array.isArray(selection?.commands) ? selection.commands : [];
+  const candidates = Array.isArray(selection?.candidates) ? selection.candidates : [];
+  const signals = selection?.signals && typeof selection.signals === "object" ? selection.signals : {};
+  const language = detectVerifyLanguageFromSelectionSignals(signals);
+  const extHints = Array.isArray(signals.ext_hints) ? signals.ext_hints : [];
+  const top = candidates[0] || {};
+  const fallbackUsed = candidates.some((item) => Array.isArray(item?.sources) && item.sources.includes("fallback"));
+  const selectedCommand = commands[0] || null;
+  const toolState = resolveVerifyCommandToolState(selectedCommand, workspaceRoot);
+  const dryRunDetected = !toolState.available;
+  const noWorkspaceTestsDetected =
+    (Array.isArray(signals?.package_scripts_detected) ? signals.package_scripts_detected.length : 0) === 0 &&
+    !candidates.some((item) => Array.isArray(item?.sources) && item.sources.includes("workspace_signal"));
+  const coverageProbe = verificationCoverageSummaryFromCommand(selectedCommand, targetFiles);
+  const shouldGenerateValidationScript =
+    !selectedCommand ||
+    noWorkspaceTestsDetected ||
+    (fallbackUsed && noFileUpdates) ||
+    dryRunDetected ||
+    coverageProbe.coverage !== "behavioral";
+  const generatedValidationScript = shouldGenerateValidationScript
+    ? buildGeneratedValidationScriptPlan({
+        language,
+        targetFiles,
+        selectedCommand,
+        reasonCode: dryRunDetected ? "tool_missing_or_not_runnable" : "no_existing_test_command"
+      })
+    : null;
+  const coverageBase = coverageProbe;
+  const coverageSummary = {
+    coverage: coverageBase.coverage,
+    reason: coverageBase.reason,
+    checks: coverageBase.checks,
+    limitations: coverageBase.limitations,
+    target_files: Array.isArray(targetFiles) ? targetFiles : [],
+    prompt_hint: summarizeText(promptText, 180) || null
+  };
+  return {
+    task_id: taskId,
+    attempt: attemptIndex,
+    language,
+    detected_from: {
+      ext_hints: extHints,
+      package_manager: signals.package_manager || null,
+      package_scripts_detected: Array.isArray(signals.package_scripts_detected) ? signals.package_scripts_detected : []
+    },
+    candidate_commands: candidates.map((item) => ({
+      command: item.command,
+      score: item.score,
+      reasons: Array.isArray(item.reasons) ? item.reasons : [],
+      sources: Array.isArray(item.sources) ? item.sources : []
+    })),
+    selected_command: selectedCommand,
+    reason: Array.isArray(top?.reasons) ? top.reasons.join(",") : null,
+    fallback_used: fallbackUsed,
+    no_file_updates: noFileUpdates,
+    tool_missing: !toolState.available,
+    dry_run_detected: dryRunDetected,
+    tool_probe: toolState,
+    generated_validation_script: generatedValidationScript,
+    coverage_summary: coverageSummary
+  };
+}
+
+function runVerifyResolverDryRunCase({
+  workspaceRoot,
+  targetFiles,
+  promptText,
+  taskType = "entry_targeted_patch",
+  maxCommands = 3
+}) {
+  const selection = normalizeVerificationCommandsForTask(taskType, [], {
+    workspaceRoot,
+    targetFiles: Array.isArray(targetFiles) ? targetFiles : [],
+    promptText: String(promptText || ""),
+    maxCommands,
+    returnMetadata: true
+  });
+  const payload = buildVerifyResolverEvidencePayload({
+    workspaceRoot,
+    taskId: "verify_resolver_dry_run",
+    attemptIndex: 1,
+    targetFiles: Array.isArray(targetFiles) ? targetFiles : [],
+    promptText: String(promptText || ""),
+    selection,
+    noFileUpdates: false
+  });
+  return {
+    workspace_root: sanitizeWorkspacePath(workspaceRoot),
+    task_type: taskType,
+    selection,
+    resolver: payload
+  };
+}
+
+function ensureDryRunFixtureFile(root, relPath, content) {
+  const rel = normalizeRelativeFilePath(relPath);
+  if (!rel) return;
+  const abs = path.join(root, rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, String(content || ""), "utf8");
+}
+
+function buildVerifyResolverMatrixDryRun() {
+  const baseRoot = path.join(workspacesRoot, "verify-resolver-matrix", String(Date.now()));
+  fs.mkdirSync(baseRoot, { recursive: true });
+  const fixtures = [
+    {
+      id: "node",
+      task_type: "entry_targeted_patch",
+      prompt: "run verify for node project",
+      target_files: ["src/app.js"],
+      files: {
+        "package.json": JSON.stringify({ scripts: { test: "node test/run-node.test.js" } }, null, 2),
+        "src/app.js": "module.exports = function app(){ return 1; };\n",
+        "test/run-node.test.js": "console.log('node ok')\n"
+      }
+    },
+    {
+      id: "python",
+      task_type: "entry_targeted_patch",
+      prompt: "run verify for python project",
+      target_files: ["app/main.py"],
+      files: {
+        "pyproject.toml": "[tool.pytest.ini_options]\naddopts = \"-q\"\n",
+        "app/main.py": "def add(a,b):\n    return a+b\n"
+      }
+    },
+    {
+      id: "go",
+      task_type: "entry_targeted_patch",
+      prompt: "run verify for go project",
+      target_files: ["main.go"],
+      files: {
+        "go.mod": "module dryrun\n\ngo 1.22\n",
+        "main.go": "package main\nfunc add(a int,b int) int { return a+b }\n"
+      }
+    },
+    {
+      id: "java_maven",
+      task_type: "entry_targeted_patch",
+      prompt: "run verify for maven project",
+      target_files: ["src/main/java/com/example/App.java"],
+      files: {
+        "pom.xml": "<project><modelVersion>4.0.0</modelVersion><groupId>x</groupId><artifactId>x</artifactId><version>1</version></project>",
+        "src/main/java/com/example/App.java": "class App { }\n"
+      }
+    },
+    {
+      id: "java_gradle_kotlin",
+      task_type: "entry_targeted_patch",
+      prompt: "run verify for gradle project",
+      target_files: ["src/main/kotlin/App.kt"],
+      files: {
+        "build.gradle.kts": "plugins { kotlin(\"jvm\") version \"1.9.0\" }\n",
+        "src/main/kotlin/App.kt": "fun main(){ println(\"ok\") }\n"
+      }
+    },
+    {
+      id: "rust",
+      task_type: "entry_targeted_patch",
+      prompt: "run verify for rust project",
+      target_files: ["src/lib.rs"],
+      files: {
+        "Cargo.toml": "[package]\nname = \"dry\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        "src/lib.rs": "pub fn add(a:i32,b:i32)->i32{a+b}\n"
+      }
+    },
+    {
+      id: "flutter",
+      task_type: "entry_targeted_patch",
+      prompt: "run verify for flutter project",
+      target_files: ["lib/main.dart"],
+      files: {
+        "pubspec.yaml": "name: dryrun_flutter\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\n",
+        "lib/main.dart": "String label(String n)=>'Hello';\n"
+      }
+    }
+  ];
+  const cases = [];
+  for (const fixture of fixtures) {
+    const root = path.join(baseRoot, fixture.id);
+    fs.mkdirSync(root, { recursive: true });
+    for (const [rel, content] of Object.entries(fixture.files || {})) {
+      ensureDryRunFixtureFile(root, rel, content);
+    }
+    const outcome = runVerifyResolverDryRunCase({
+      workspaceRoot: root,
+      targetFiles: fixture.target_files || [],
+      promptText: fixture.prompt || "",
+      taskType: fixture.task_type || "entry_targeted_patch",
+      maxCommands: 3
+    });
+    cases.push({
+      fixture_id: fixture.id,
+      workspace_root: sanitizeWorkspacePath(root),
+      language: outcome.resolver.language,
+      detected_from: outcome.resolver.detected_from,
+      candidate_commands: outcome.resolver.candidate_commands,
+      selected_command: outcome.resolver.selected_command,
+      reason: outcome.resolver.reason,
+      fallback_used: outcome.resolver.fallback_used,
+      tool_missing: outcome.resolver.tool_missing,
+      dry_run_detected: outcome.resolver.dry_run_detected,
+      generated_validation_script: outcome.resolver.generated_validation_script,
+      coverage_summary: outcome.resolver.coverage_summary
+    });
+  }
+  const matrix = {
+    generated_at: nowIso(),
+    fixture_root: sanitizeWorkspacePath(baseRoot),
+    cases,
+    summary: {
+      total: cases.length,
+      tool_missing_count: cases.filter((x) => x.tool_missing).length,
+      dry_run_detected_count: cases.filter((x) => x.dry_run_detected).length
+    }
+  };
+  const matrixPath = path.join(baseRoot, "verify_resolver_matrix.json");
+  fs.writeFileSync(matrixPath, `${JSON.stringify(matrix, null, 2)}\n`, "utf8");
+  return {
+    matrix,
+    matrix_path: sanitizeWorkspacePath(matrixPath)
+  };
 }
 
 function engineeringTaskStories(fixtureRoots, storyId = "polyglot_engineering_chain_v1") {
@@ -36466,30 +42192,315 @@ function evaluateReviewGate({ workspaceRoot, touchedFiles, stackProfile }) {
   return { passed: !failureReason, failure_reason: failureReason, checks };
 }
 
-function runVerificationPipeline({ runId, taskId, workspaceRoot, commands, stepId }) {
+function writeCommandExecutionArtifact(runId, { taskId, stageIndex, command, cwd, shell, exitCode, stdout, stderr, durationMs }) {
+  const artifactPayload = {
+    command: String(command || ""),
+    cwd: String(cwd || ""),
+    shell: String(shell || "direct_exec"),
+    exit_code: normalizeExitCode(exitCode),
+    stdout: String(stdout || ""),
+    stderr: String(stderr || ""),
+    duration_ms: Number(durationMs || 0)
+  };
+  const safeTask = String(taskId || "task").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 48) || "task";
+  const safeStage = Number.isFinite(Number(stageIndex)) ? Number(stageIndex) : 0;
+  const disk = writeRunArtifact(
+    runId,
+    `commands/${safeTask}_stage_${safeStage || "x"}_${Date.now()}.json`,
+    `${JSON.stringify(artifactPayload, null, 2)}\n`,
+    1024 * 1024
+  );
+  return toRepoRelative(disk);
+}
+
+function runVerificationPipeline({ runId, taskId, workspaceRoot, commands, stepId, attempt = null }) {
+  const attemptIndex = Number.isFinite(Number(attempt)) ? Number(attempt) : null;
+  const withAttempt = (payload) => {
+    if (attemptIndex === null) return payload;
+    return {
+      ...payload,
+      attempt: attemptIndex
+    };
+  };
+  const emitCommandChunks = (commandText, stream, text, lane = "task") => {
+    const raw = String(text || "");
+    if (!raw) return;
+    const chunkSize = 1200;
+    const total = Math.max(1, Math.ceil(raw.length / chunkSize));
+    const streamName = stream === "stderr" ? "stderr" : "stdout";
+    const chunkEventType = streamName === "stderr" ? "command.stderr.chunk" : "command.stdout.chunk";
+    for (let i = 0; i < total; i += 1) {
+      const chunk = raw.slice(i * chunkSize, (i + 1) * chunkSize);
+      if (!chunk) continue;
+      emitEvent(runId, chunkEventType, withAttempt({
+        step_id: stepId,
+        task_id: taskId,
+        lane,
+        command: commandText,
+        stream: streamName,
+        chunk_index: i + 1,
+        chunk_total: total,
+        chunk,
+        status: "running"
+      }));
+    }
+  };
   const results = [];
   let passed = true;
+  let lastVerifyEventId = null;
+  const verifyTimeoutMs = Math.max(1000, parsePositiveInt(verifyLoopContract?.timeout_ms, 90000));
   for (let i = 0; i < commands.length; i += 1) {
     const commandText = String(commands[i] || "").trim();
     if (!commandText) continue;
-    emitEvent(runId, "engineering.verify.started", {
+    const thinkingId = shortId("thk");
+    emitEvent(runId, "thinking.started", withAttempt({
+      step_id: stepId,
+      task_id: taskId,
+      lane: "task",
+      phase: "verify",
+      thinking_id: thinkingId,
+      stage_index: i + 1,
+      command: commandText,
+      status: "running"
+    }));
+    emitEvent(runId, "command.proposed", withAttempt({
+      step_id: stepId,
+      task_id: taskId,
+      lane: "task",
+      stage_index: i + 1,
+      command: commandText,
+      cwd: workspaceRoot,
+      status: "proposed"
+    }));
+    emitEvent(runId, "verify.started", withAttempt({
+      step_id: stepId,
+      task_id: taskId,
+      lane: "task",
+      stage_index: i + 1,
+      command: commandText,
+      cwd: workspaceRoot,
+      status: "running"
+    }));
+    emitEvent(runId, "engineering.verify.started", withAttempt({
       step_id: stepId,
       task_id: taskId,
       stage_index: i + 1,
       command: commandText,
       cwd: workspaceRoot
-    });
+    }));
     const parsed = splitCommand(commandText);
     if (!parsed.command) {
       const fail = { command: commandText, status: "failed", exit_code: -1, stdout_summary: "", stderr_summary: "command_parse_failed" };
+      const artifactRef = writeCommandExecutionArtifact(runId, {
+        taskId,
+        stageIndex: i + 1,
+        command: commandText,
+        cwd: workspaceRoot,
+        shell: "parse_failed",
+        exitCode: -1,
+        stdout: "",
+        stderr: "command_parse_failed",
+        durationMs: 0
+      });
+      emitEvent(runId, "thinking.completed", withAttempt({
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        phase: "verify",
+        thinking_id: thinkingId,
+        stage_index: i + 1,
+        command: commandText,
+        status: "completed"
+      }));
+      emitEvent(runId, "command.started", withAttempt({
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: workspaceRoot,
+        shell: "parse_failed",
+        status: "failed"
+      }));
+      emitEvent(runId, "command.completed", withAttempt({
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: workspaceRoot,
+        shell: "parse_failed",
+        exit_code: -1,
+        exitCode: -1,
+        duration_ms: 0,
+        durationMs: 0,
+        startedAt: nowIso(),
+        finishedAt: nowIso(),
+        stdout: "",
+        stderr: "command_parse_failed",
+        artifact_ref: artifactRef,
+        status: "failed"
+      }));
+      fail.artifact_ref = artifactRef;
       results.push(fail);
-      emitEvent(runId, "engineering.verify.completed", { step_id: stepId, task_id: taskId, stage_index: i + 1, ...fail });
+      emitEvent(runId, "engineering.verify.completed", withAttempt({ step_id: stepId, task_id: taskId, stage_index: i + 1, ...fail }));
+      const failedEvt = emitEvent(runId, "verify.failed", withAttempt({
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: workspaceRoot,
+        exit_code: -1,
+        status: "failed",
+        reason: "command_parse_failed"
+      }));
+      fail.verify_failed_event_id = failedEvt?.event_id || null;
+      lastVerifyEventId = failedEvt?.event_id || lastVerifyEventId;
       passed = false;
       break;
     }
+    const blockedByPolicy = isBlockedShellCommand(parsed.command, parsed.args);
+    if (blockedByPolicy) {
+      const artifactRef = writeCommandExecutionArtifact(runId, {
+        taskId,
+        stageIndex: i + 1,
+        command: commandText,
+        cwd: workspaceRoot,
+        shell: "policy_guard",
+        exitCode: 126,
+        stdout: "",
+        stderr: `command_blocked_by_policy:${blockedByPolicy}`,
+        durationMs: 0
+      });
+      emitEvent(runId, "command.started", withAttempt({
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: workspaceRoot,
+        shell: "policy_guard",
+        status: "blocked"
+      }));
+      emitEvent(runId, "command.completed", withAttempt({
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: workspaceRoot,
+        shell: "policy_guard",
+        exit_code: 126,
+        exitCode: 126,
+        duration_ms: 0,
+        durationMs: 0,
+        startedAt: nowIso(),
+        finishedAt: nowIso(),
+        stdout: "",
+        stderr: `command_blocked_by_policy:${blockedByPolicy}`,
+        artifact_ref: artifactRef,
+        status: "blocked"
+      }));
+      const failedEvt = emitEvent(runId, "verify.failed", withAttempt({
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: workspaceRoot,
+        shell: "policy_guard",
+        exit_code: 126,
+        duration_ms: 0,
+        reason: `command_blocked_by_policy:${blockedByPolicy}`,
+        status: "failed"
+      }));
+      results.push({
+        command: commandText,
+        status: "blocked",
+        exit_code: 126,
+        cwd: workspaceRoot,
+        shell: "policy_guard",
+        duration_ms: 0,
+        stdout_summary: "",
+        stderr_summary: `command_blocked_by_policy:${blockedByPolicy}`,
+        artifact_ref: artifactRef,
+        verify_failed_event_id: failedEvt?.event_id || null,
+        timeout_or_killed: false
+      });
+      lastVerifyEventId = failedEvt?.event_id || lastVerifyEventId;
+      passed = false;
+      break;
+    }
+    emitEvent(runId, "command.started", withAttempt({
+      step_id: stepId,
+      task_id: taskId,
+      lane: "task",
+      stage_index: i + 1,
+      command: commandText,
+      cwd: workspaceRoot,
+      shell: "direct_exec",
+      status: "running",
+      started_at: nowIso(),
+      startedAt: nowIso()
+    }));
+    emitEvent(runId, "thinking.completed", withAttempt({
+      step_id: stepId,
+      task_id: taskId,
+      lane: "task",
+      phase: "verify",
+      thinking_id: thinkingId,
+      stage_index: i + 1,
+      command: commandText,
+      status: "completed"
+    }));
     const started = nowIso();
-    const res = runLocalCommand(parsed.command, parsed.args, 90000, { cwd: workspaceRoot });
+    const res = runLocalCommand(parsed.command, parsed.args, verifyTimeoutMs, { cwd: workspaceRoot });
     const completed = nowIso();
+    const verifyErrorProbe = `${String(res?.error_message || "")}\n${String(res?.stderr || "")}\n${String(res?.stdout || "")}\n${String(res?.signal || "")}`;
+    const timeoutOrKilled = /timed out|timeout|timedout|etimedout|sigterm|killed|aborted/i.test(verifyErrorProbe);
+    const normalizedExitCode = normalizeExitCode(res.status);
+    const effectiveExitCode = normalizedExitCode !== null && normalizedExitCode !== undefined && Number.isFinite(Number(normalizedExitCode))
+      ? Number(normalizedExitCode)
+      : timeoutOrKilled
+        ? 124
+        : res.ok
+          ? 0
+          : 1;
+    const artifactRef = writeCommandExecutionArtifact(runId, {
+      taskId,
+      stageIndex: i + 1,
+      command: commandText,
+      cwd: res.cwd || workspaceRoot,
+      shell: res.shell || null,
+      exitCode: effectiveExitCode,
+      stdout: res.stdout || "",
+      stderr: res.stderr || res.error_message || "",
+      durationMs: Number(res.duration_ms || 0)
+    });
+    emitCommandChunks(commandText, "stdout", res.stdout, "task");
+    emitCommandChunks(commandText, "stderr", res.stderr || res.error_message || "", "task");
+    emitEvent(runId, "command.completed", withAttempt({
+      step_id: stepId,
+      task_id: taskId,
+      lane: "task",
+      stage_index: i + 1,
+      command: commandText,
+      cwd: res.cwd || workspaceRoot,
+      shell: res.shell || null,
+      exit_code: effectiveExitCode,
+      exitCode: effectiveExitCode,
+      duration_ms: Number(res.duration_ms || 0),
+      durationMs: Number(res.duration_ms || 0),
+      started_at: started,
+      startedAt: started,
+      finished_at: completed,
+      finishedAt: completed,
+      stdout: summarizeText(res.stdout, 1400),
+      stderr: summarizeText(res.stderr || res.error_message, 1400),
+      artifact_ref: artifactRef,
+      status: res.ok ? "completed" : "failed"
+    }));
     recordAdapterRun({
       runId,
       adapterId: "shell.adapter.v1",
@@ -36498,16 +42509,21 @@ function runVerificationPipeline({ runId, taskId, workspaceRoot, commands, stepI
       status: res.ok ? "completed" : "failed",
       startedAt: started,
       completedAt: completed,
-      exitCode: normalizeExitCode(res.status),
+      exitCode: effectiveExitCode,
       stdoutSummary: summarizeText(res.stdout, 1024),
       stderrSummary: summarizeText(res.stderr || res.error_message, 1024)
     });
     const payload = {
       command: commandText,
       status: res.ok ? "completed" : "failed",
-      exit_code: normalizeExitCode(res.status),
+      exit_code: effectiveExitCode,
+      cwd: res.cwd || workspaceRoot,
+      shell: res.shell || null,
+      duration_ms: Number(res.duration_ms || 0),
       stdout_summary: summarizeText(res.stdout, 800),
-      stderr_summary: summarizeText(res.stderr || res.error_message, 800)
+      stderr_summary: summarizeText(res.stderr || res.error_message, 800),
+      artifact_ref: artifactRef,
+      timeout_or_killed: timeoutOrKilled
     };
     recordEngineeringVerifyRun({
       runId,
@@ -36520,7 +42536,51 @@ function runVerificationPipeline({ runId, taskId, workspaceRoot, commands, stepI
       stderrSummary: payload.stderr_summary
     });
     results.push(payload);
-    emitEvent(runId, "engineering.verify.completed", { step_id: stepId, task_id: taskId, stage_index: i + 1, ...payload });
+    emitEvent(runId, "engineering.verify.completed", withAttempt({ step_id: stepId, task_id: taskId, stage_index: i + 1, ...payload }));
+    if (!res.ok) {
+      const failedEvt = emitEvent(runId, "verify.failed", withAttempt({
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: res.cwd || workspaceRoot,
+        shell: res.shell || null,
+        exit_code: effectiveExitCode,
+        exitCode: effectiveExitCode,
+        duration_ms: Number(res.duration_ms || 0),
+        durationMs: Number(res.duration_ms || 0),
+        started_at: started,
+        startedAt: started,
+        finished_at: completed,
+        finishedAt: completed,
+        reason: summarizeText(res.stderr || res.error_message || "verify_failed", 300),
+        status: "failed"
+      }));
+      payload.verify_failed_event_id = failedEvt?.event_id || null;
+      lastVerifyEventId = failedEvt?.event_id || lastVerifyEventId;
+    } else {
+      const completedEvt = emitEvent(runId, "verify.completed", withAttempt({
+        step_id: stepId,
+        task_id: taskId,
+        lane: "task",
+        stage_index: i + 1,
+        command: commandText,
+        cwd: res.cwd || workspaceRoot,
+        shell: res.shell || null,
+        exit_code: effectiveExitCode,
+        exitCode: effectiveExitCode,
+        duration_ms: Number(res.duration_ms || 0),
+        durationMs: Number(res.duration_ms || 0),
+        started_at: started,
+        startedAt: started,
+        finished_at: completed,
+        finishedAt: completed,
+        status: "completed"
+      }));
+      payload.verify_completed_event_id = completedEvt?.event_id || null;
+      lastVerifyEventId = completedEvt?.event_id || lastVerifyEventId;
+    }
     if (!res.ok) {
       passed = false;
       break;
@@ -36529,7 +42589,8 @@ function runVerificationPipeline({ runId, taskId, workspaceRoot, commands, stepI
   return {
     passed,
     results,
-    failure_summary: passed ? null : summarizeText(results[results.length - 1]?.stderr_summary || "verify_failed", 512)
+    failure_summary: passed ? null : summarizeText(results[results.length - 1]?.stderr_summary || "verify_failed", 512),
+    last_verify_event_id: lastVerifyEventId
   };
 }
 
@@ -38305,8 +44366,10 @@ async function compileEngineeringObjects({ runId, task }) {
 
 async function generateFileUpdatesWithModel({ runId, task, filePlan, verifyFailure, workspaceRoot }) {
   const files = readFilesForContext(workspaceRoot, filePlan?.target_files || task.target_files || []);
+  const repairMode = Boolean(verifyFailure && String(verifyFailure).trim());
   const prompt = [
-    "Return JSON only with schema: {\"updates\":[{\"path\":\"...\",\"content\":\"...\"}],\"summary\":\"...\"}.",
+    "Return JSON only with schema: {\"action_plan\":[{\"action_id\":\"...\",\"intent\":\"inspect_file|patch_file|run_verify|run_command|install_toolchain_required|deploy_authorization_required\",\"target\":\"...\",\"risk\":\"low|medium|high\",\"expected_result\":\"...\",\"requires_approval\":true|false}],\"updates\":[{\"path\":\"...\",\"content\":\"...\"}],\"summary\":\"...\"}.",
+    "Do not output raw shell command proposals in action_plan. Use intents only.",
     "Do not include markdown.",
     `Task ask: ${task.original_user_ask}`,
     `Workspace root: ${workspaceRoot}`,
@@ -38317,7 +44380,10 @@ async function generateFileUpdatesWithModel({ runId, task, filePlan, verifyFailu
   ].join("\n");
   return callOpenAiJsonObject({
     systemPrompt:
-      "You are a polyglot code fix assistant. Return strict JSON updates only. Keep paths inside workspace and update only relevant files.",
+      "You are a polyglot code fix assistant. Return strict JSON with action_plan and updates only. Keep paths inside workspace and update only relevant files. Never output direct shell command text as executable intent; use structured intents and targets only." +
+      (repairMode
+        ? " Repair mode is active because verification failed. Prioritize making verification pass with minimal safe edits, even if the original ask conflicts with tests."
+        : ""),
     userPrompt: prompt,
     maxTokens: 2200,
     temperature: 0.1,
@@ -39536,24 +45602,97 @@ function executeExternalRunnerExecutionPlaneCloseout(runId, plan) {
   }
 }
 
-function applyModelFileUpdates({ runId, taskId, workspaceRoot, updates }) {
+function buildSimpleDiffHunks(beforeText, afterText) {
+  const before = String(beforeText || "").replace(/\r\n/g, "\n");
+  const after = String(afterText || "").replace(/\r\n/g, "\n");
+  const beforeLines = before.length ? before.split("\n") : [];
+  const afterLines = after.length ? after.split("\n") : [];
+  if (before === after) {
+    return [];
+  }
+  return [
+    {
+      header: `@@ -1,${beforeLines.length} +1,${afterLines.length} @@`,
+      lines: [
+        ...beforeLines.map((line) => ({ sign: "-", text: line })),
+        ...afterLines.map((line) => ({ sign: "+", text: line }))
+      ]
+    }
+  ];
+}
+
+function applyModelFileUpdates({
+  runId,
+  taskId,
+  stepId = null,
+  sessionId = null,
+  turnId = null,
+  turnIndex = null,
+  lane = "task",
+  workspaceRoot,
+  updates,
+  allowCreate = true,
+  allowedPaths = null
+}) {
   const touchedFiles = [];
+  const allowedSet =
+    Array.isArray(allowedPaths) && allowedPaths.length > 0
+      ? new Set(allowedPaths.map((x) => normalizeRelativeFilePath(x)).filter(Boolean))
+      : null;
   for (const raw of updates || []) {
     const rel = normalizeRelativeFilePath(raw?.path || "");
     if (!rel) continue;
+    if (allowedSet && !allowedSet.has(rel)) {
+      throw new Error(`target_outside_allowed_paths:${rel}`);
+    }
     const abs = workspaceAbsolutePath(workspaceRoot, rel);
     assertWorkspacePath(abs, workspaceRoot);
     if (isForbiddenFilePath(abs)) throw new Error(`forbidden_file_update:${rel}`);
-    const before = fs.existsSync(abs) ? readTextFileWithPolicy(abs) : "";
+    const existedBefore = fs.existsSync(abs);
+    if (!allowCreate && !existedBefore) {
+      throw new Error(`target_file_missing:${rel}`);
+    }
+    const before = existedBefore ? readTextFileWithPolicy(abs) : "";
     writeTextFileWithPolicy(abs, String(raw?.content || ""));
     const after = readTextFileWithPolicy(abs);
+    const hunks = buildSimpleDiffHunks(before, after);
+    const safeTask = String(taskId || "task").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 48) || "task";
+    const safeRel = rel.replace(/[\\/]/g, "__").replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100);
+    const diffArtifactDisk = writeRunArtifact(
+      runId,
+      `diffs/${safeTask}_${safeRel}_${Date.now()}.json`,
+      `${JSON.stringify(
+        {
+          path: rel,
+          action: existedBefore ? "update" : "create",
+          hunks
+        },
+        null,
+        2
+      )}\n`,
+      1024 * 1024
+    );
+    const diffArtifactRef = toRepoRelative(diffArtifactDisk);
     recordFileChange({
       runId,
       filePath: rel,
-      action: fs.existsSync(abs) ? "update" : "create",
+      action: existedBefore ? "update" : "create",
       beforeHash: before ? textHash(before) : null,
       afterHash: textHash(after),
-      summary: `task=${taskId}; model_file_update`
+      summary: `task=${taskId}; model_file_update; diff_artifact=${diffArtifactRef}`
+    });
+    emitEvent(runId, "diff.available", {
+      step_id: stepId,
+      session_id: sessionId,
+      turn_id: turnId,
+      turn_index: turnIndex,
+      lane,
+      task_id: taskId,
+      path: rel,
+      action: existedBefore ? "update" : "create",
+      hunks,
+      artifact_ref: diffArtifactRef,
+      status: "completed"
     });
     touchedFiles.push(rel);
   }
@@ -39819,13 +45958,21 @@ async function executeTaskToEngineeringCloseout(runId, plan) {
       target_files: targetFiles
     });
 
-    const verifyCommands = normalizeVerificationCommandsForTask(task.task_type, verificationPlan?.commands);
+    const verifySelection = normalizeVerificationCommandsForTask(task.task_type, verificationPlan?.commands, {
+      workspaceRoot: task.workspace_root,
+      targetFiles,
+      promptText: task.original_user_ask,
+      returnMetadata: true
+    });
+    const verifyCommands = Array.isArray(verifySelection?.commands) ? verifySelection.commands : [];
     const verificationRow = recordVerificationPlan({
       runId,
       taskId: task.task_id,
       planJson: {
         ...verificationPlan,
         commands: verifyCommands,
+        command_selection: Array.isArray(verifySelection?.candidates) ? verifySelection.candidates : [],
+        signal_summary: verifySelection?.signals || {},
         attempt_ceiling: maxRepairAttempts
       },
       commandsJson: JSON.stringify(verifyCommands),
@@ -39835,7 +45982,9 @@ async function executeTaskToEngineeringCloseout(runId, plan) {
       step_id: stepId,
       task_id: task.task_id,
       verification_plan_id: verificationRow.id,
-      commands: verifyCommands
+      commands: verifyCommands,
+      command_selection: Array.isArray(verifySelection?.candidates) ? verifySelection.candidates.slice(0, 8) : [],
+      signal_summary: verifySelection?.signals || {}
     });
 
     emitEvent(runId, "engineering.deploy_plan.generated", {
@@ -41828,9 +47977,10 @@ function handleSse(req, res, options = {}) {
       final_cursor: finalCursor
     })}\n\n`
   );
-  sseClients.add(res);
+  const clientEntry = { res, runId: runId || null };
+  sseClients.add(clientEntry);
   req.on("close", () => {
-    sseClients.delete(res);
+    sseClients.delete(clientEntry);
   });
 }
 const server = http.createServer(async (req, res) => {
@@ -41841,6 +47991,10 @@ const server = http.createServer(async (req, res) => {
     setCorsHeaders(res);
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  if (tryServeEntryFrontendAsset(req, res, pathname)) {
     return;
   }
 
@@ -41912,6 +48066,53 @@ const server = http.createServer(async (req, res) => {
         mode: body.mode || "chat"
       });
       sendJson(res, 200, resolved);
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/verify-resolver/dry-run") {
+      const body = await readJsonBody(req);
+      if (body && (body.matrix === true || String(body.mode || "").toLowerCase() === "matrix")) {
+        const matrix = buildVerifyResolverMatrixDryRun();
+        sendJson(res, 200, {
+          ok: true,
+          mode: "matrix",
+          verify_resolver_matrix_json: matrix.matrix_path,
+          matrix: matrix.matrix
+        });
+        return;
+      }
+      const workspaceRoot = typeof body.workspace_root === "string"
+        ? body.workspace_root
+        : typeof body.workspaceRoot === "string"
+          ? body.workspaceRoot
+          : null;
+      if (!workspaceRoot || !String(workspaceRoot).trim()) {
+        sendJson(res, 400, { error: "workspace_root_required" });
+        return;
+      }
+      const targetFiles = Array.isArray(body.target_files)
+        ? body.target_files
+        : Array.isArray(body.targetFiles)
+          ? body.targetFiles
+          : [];
+      const promptText = typeof body.prompt_text === "string"
+        ? body.prompt_text
+        : typeof body.promptText === "string"
+          ? body.promptText
+          : "";
+      const taskType = typeof body.task_type === "string" ? body.task_type : "entry_targeted_patch";
+      const result = runVerifyResolverDryRunCase({
+        workspaceRoot,
+        targetFiles,
+        promptText,
+        taskType,
+        maxCommands: parsePositiveInt(body.max_commands, 3)
+      });
+      sendJson(res, 200, {
+        ok: true,
+        mode: "single",
+        ...result
+      });
       return;
     }
 
@@ -42002,6 +48203,169 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         accepted: true,
         host_action: actionResult
+      });
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/context/settings") {
+      const sessionIdRaw = url.searchParams.get("session_id");
+      const sessionId =
+        typeof sessionIdRaw === "string" && sessionIdRaw.trim()
+          ? sessionIdRaw.trim()
+          : latestEntrySession()?.id || null;
+      if (!sessionId) {
+        sendJson(res, 404, { error: "session_id_required" });
+        return;
+      }
+      const settings = readContextSettings(sessionId);
+      sendJson(res, 200, {
+        ok: true,
+        session_id: sessionId,
+        settings: settings || null
+      });
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/context/settings") {
+      const body = await readJsonBody(req);
+      const sessionId =
+        typeof body.session_id === "string" && body.session_id.trim()
+          ? body.session_id.trim()
+          : latestEntrySession()?.id || null;
+      if (!sessionId) {
+        sendJson(res, 404, { error: "session_id_required" });
+        return;
+      }
+      const updated = patchContextSettings(
+        sessionId,
+        {
+          auto_compact_after_task_lane:
+            Object.prototype.hasOwnProperty.call(body, "auto_compact_after_task_lane")
+              ? body.auto_compact_after_task_lane
+              : undefined,
+          auto_compact_enabled:
+            Object.prototype.hasOwnProperty.call(body, "auto_compact_enabled")
+              ? body.auto_compact_enabled
+              : undefined,
+          event_threshold: body.event_threshold,
+          token_threshold: body.token_threshold,
+          stdout_stderr_threshold: body.stdout_stderr_threshold,
+          artifacts_threshold: body.artifacts_threshold,
+          repair_round_threshold: body.repair_round_threshold
+        },
+        "api_context_settings_update"
+      );
+      const runId = latestRunIdForSession(sessionId);
+      if (runId) {
+        emitRunEventIfExists(runId, "context.setting.updated", {
+          session_id: sessionId,
+          auto_compact_after_task_lane: Number(updated?.auto_compact_after_task_lane || 0) === 1,
+          auto_compact_enabled: Number(updated?.auto_compact_enabled || 0) === 1,
+          event_threshold: Number(updated?.event_threshold || 0),
+          token_threshold: Number(updated?.token_threshold || 0),
+          stdout_stderr_threshold: Number(updated?.stdout_stderr_threshold || 0),
+          artifacts_threshold: Number(updated?.artifacts_threshold || 0),
+          repair_round_threshold: Number(updated?.repair_round_threshold || 0)
+        });
+        emitRunEventIfExists(
+          runId,
+          Number(updated?.auto_compact_enabled || 0) === 1 ? "context.auto_compact.enabled" : "context.auto_compact.disabled",
+          {
+            session_id: sessionId,
+            source: "api_context_settings_update"
+          }
+        );
+      }
+      sendJson(res, 200, {
+        ok: true,
+        session_id: sessionId,
+        settings: updated
+      });
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/context/compact") {
+      const body = await readJsonBody(req);
+      const sessionId =
+        typeof body.session_id === "string" && body.session_id.trim()
+          ? body.session_id.trim()
+          : latestEntrySession()?.id || null;
+      let runId =
+        typeof body.run_id === "string" && body.run_id.trim() ? body.run_id.trim() : sessionId ? latestRunIdForSession(sessionId) : null;
+      if (!runId) {
+        runId = activeRunId || null;
+      }
+      if (!runId) {
+        sendJson(res, 404, { error: "run_id_required_for_compact" });
+        return;
+      }
+      const result = runContextCompaction({
+        runId,
+        sessionId: sessionId || resolveSessionIdForRun(runId, null),
+        triggerType:
+          typeof body.trigger_type === "string" && body.trigger_type.trim() ? body.trigger_type.trim() : "manual_api",
+        reason: typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : "manual_api_compact",
+        manual: true,
+        requestedBy: "api_context_compact",
+        sourceEventFromSeq: Number.isFinite(Number(body.source_event_from_seq)) ? Number(body.source_event_from_seq) : null,
+        sourceEventToSeq: Number.isFinite(Number(body.source_event_to_seq)) ? Number(body.source_event_to_seq) : null,
+        timeoutMs: Number.isFinite(Number(body.timeout_ms)) ? Number(body.timeout_ms) : 15000,
+        simulateTimeout: body.simulate_timeout === true
+      });
+      if (!result.ok) {
+        sendJson(res, result.error === "unsafe_boundary" ? 202 : 409, result);
+        return;
+      }
+      sendJson(res, 201, {
+        ok: true,
+        run_id: runId,
+        session_id: sessionId || resolveSessionIdForRun(runId, null),
+        context_compaction: result.context_compaction || null,
+        context_snapshot: result.context_snapshot || null,
+        compact_run: result.compact_run || null
+      });
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/context/snapshots") {
+      const sessionIdRaw = url.searchParams.get("session_id");
+      const sessionId =
+        typeof sessionIdRaw === "string" && sessionIdRaw.trim()
+          ? sessionIdRaw.trim()
+          : latestEntrySession()?.id || null;
+      if (!sessionId) {
+        sendJson(res, 404, { error: "session_id_required" });
+        return;
+      }
+      const rows = dbAll(
+        "SELECT * FROM context_snapshots WHERE session_id = ? ORDER BY created_at DESC LIMIT 200",
+        sessionId
+      );
+      sendJson(res, 200, {
+        ok: true,
+        session_id: sessionId,
+        snapshots: rows,
+        latest: rows[0] || null
+      });
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/context/receipt") {
+      const runIdRaw = url.searchParams.get("run_id");
+      const runId = typeof runIdRaw === "string" && runIdRaw.trim() ? runIdRaw.trim() : null;
+      if (!runId) {
+        sendJson(res, 400, { error: "run_id_required" });
+        return;
+      }
+      const receipt = latestRunContextReceipt(runId);
+      if (!receipt) {
+        sendJson(res, 404, { error: "receipt_not_found", run_id: runId });
+        return;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        run_id: runId,
+        receipt
       });
       return;
     }
@@ -42937,16 +49301,23 @@ const server = http.createServer(async (req, res) => {
         });
         return;
       }
+      const sandboxStartedAt = nowIso();
+      const sandboxCwd = typeof body.cwd === "string" && body.cwd.trim() ? body.cwd.trim() : repoRoot;
       if (runId) {
         emitRunEventIfExists(runId, "runtime.sandbox.command.started", {
           step_id: stepId,
           action_class: actionClass,
           command: command,
-          args
+          args,
+          cwd: sandboxCwd,
+          shell: body.shell === true ? inferHostShellType() : "direct_exec",
+          started_at: sandboxStartedAt,
+          startedAt: sandboxStartedAt,
+          status: "running"
         });
       }
       const result = runLocalCommand(command, args, parsePositiveInt(body.timeout_ms, 15000), {
-        cwd: typeof body.cwd === "string" && body.cwd.trim() ? body.cwd.trim() : repoRoot,
+        cwd: sandboxCwd,
         workspace_root: typeof body.workspace_root === "string" && body.workspace_root.trim() ? body.workspace_root.trim() : null,
         run_id: runId || null,
         step_id: stepId || null,
@@ -42955,14 +49326,41 @@ const server = http.createServer(async (req, res) => {
         allowed_env_keys: Array.isArray(body.allowed_env_keys) ? body.allowed_env_keys : [],
         shell: body.shell === true
       });
+      const sandboxFinishedAt = nowIso();
+      const sandboxErrorProbe = `${String(result?.error_message || "")}\n${String(result?.stderr || "")}\n${String(result?.stdout || "")}\n${String(result?.signal || "")}`;
+      const timeoutOrKilled = /timed out|timeout|timedout|etimedout|sigterm|killed|aborted/i.test(sandboxErrorProbe);
+      const normalizedExitCode = normalizeExitCode(result.status);
+      const effectiveExitCode = normalizedExitCode !== null && normalizedExitCode !== undefined && Number.isFinite(Number(normalizedExitCode))
+        ? Number(normalizedExitCode)
+        : timeoutOrKilled
+          ? 124
+          : result.ok
+            ? 0
+            : 1;
       if (runId) {
         emitRunEventIfExists(runId, "runtime.sandbox.command.completed", {
           step_id: stepId,
           action_class: actionClass,
+          command,
+          args,
+          cwd: result.cwd || sandboxCwd,
+          shell: result.shell || (body.shell === true ? inferHostShellType() : "direct_exec"),
           ok: result.ok,
-          status: result.status,
+          status: result.ok ? "completed" : "failed",
+          exit_code: effectiveExitCode,
+          exitCode: effectiveExitCode,
+          stdout: summarizeText(String(result.stdout || ""), 1400),
+          stderr: summarizeText(String(result.stderr || result.error_message || ""), 1400),
+          duration_ms: Number(result.duration_ms || 0),
+          durationMs: Number(result.duration_ms || 0),
+          started_at: sandboxStartedAt,
+          startedAt: sandboxStartedAt,
+          finished_at: sandboxFinishedAt,
+          finishedAt: sandboxFinishedAt,
           env_forwarded_keys: result.env_forwarded_keys,
-          env_blocked_keys: result.env_blocked_keys
+          env_blocked_keys: result.env_blocked_keys,
+          signal: result.signal || null,
+          timeout_or_killed: timeoutOrKilled
         });
       }
       sendJson(res, 200, {
@@ -43068,25 +49466,39 @@ const server = http.createServer(async (req, res) => {
         }
         const body = await readJsonBody(req);
         const triggerType = typeof body.trigger_type === "string" && body.trigger_type.trim() ? body.trigger_type.trim() : "manual";
-        const result = createCompactForRun(runId, triggerType, {
-          sourceEventFromSeq: Number.isFinite(Number(body.source_event_from_seq)) ? Number(body.source_event_from_seq) : undefined,
-          sourceEventToSeq: Number.isFinite(Number(body.source_event_to_seq)) ? Number(body.source_event_to_seq) : undefined
+        const result = runContextCompaction({
+          runId,
+          sessionId:
+            typeof body.session_id === "string" && body.session_id.trim()
+              ? body.session_id.trim()
+              : resolveSessionIdForRun(runId, null),
+          triggerType,
+          reason: typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : "manual_request",
+          manual: true,
+          requestedBy: "api_run_compact",
+          sourceEventFromSeq: Number.isFinite(Number(body.source_event_from_seq)) ? Number(body.source_event_from_seq) : null,
+          sourceEventToSeq: Number.isFinite(Number(body.source_event_to_seq)) ? Number(body.source_event_to_seq) : null,
+          timeoutMs: Number.isFinite(Number(body.timeout_ms)) ? Number(body.timeout_ms) : 15000,
+          simulateTimeout: body.simulate_timeout === true
         });
         if (!result.ok) {
-          sendJson(res, 409, result);
+          sendJson(res, result.error === "unsafe_boundary" ? 202 : 409, result);
           return;
         }
+        const compactRun = result.compact_run || null;
         sendJson(res, 201, {
           ok: true,
-          compact_id: result.compact_run.id,
-          compact_run: result.compact_run,
-          artifact_path: result.compact_run.artifact_path,
+          compact_id: compactRun?.id || null,
+          compact_run: compactRun,
+          artifact_path: compactRun?.artifact_path || null,
           source_event_range: {
-            from_seq: result.compact_run.source_event_from_seq,
-            to_seq: result.compact_run.source_event_to_seq
+            from_seq: compactRun?.source_event_from_seq || null,
+            to_seq: compactRun?.source_event_to_seq || null
           },
-          compact_artifact: result.compact_artifact,
-          compact_mapping: result.compact_mapping
+          compact_artifact: result.compact_artifact || null,
+          compact_mapping: result.compact_mapping || null,
+          context_compaction: result.context_compaction || null,
+          context_snapshot: result.context_snapshot || null
         });
         return;
       }
@@ -43122,10 +49534,15 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         const rows = dbAll("SELECT * FROM autocontext_snapshots WHERE run_id = ? ORDER BY created_at DESC", runId);
+        const compiledRows = dbAll(
+          "SELECT * FROM autocontext_compilations WHERE run_id = ? ORDER BY created_at DESC",
+          runId
+        );
         sendJson(res, 200, {
           run_id: runId,
           autocontext_snapshots: rows,
-          latest: rows[0] || null
+          autocontext_compilations: compiledRows,
+          latest: compiledRows[0] || rows[0] || null
         });
         return;
       }
@@ -43159,7 +49576,17 @@ const server = http.createServer(async (req, res) => {
           sendJson(res, 409, assembled);
           return;
         }
-        sendJson(res, 201, assembled);
+        const compiled = emitAutoContextCompilation({
+          runId,
+          stepId,
+          sessionId: typeof body.session_id === "string" ? body.session_id : resolveSessionIdForRun(runId, null),
+          triggerPhase: "manual_api",
+          requestedBy: "api_run_autocontext_assemble"
+        });
+        sendJson(res, 201, {
+          ...assembled,
+          compilation: compiled
+        });
         return;
       }
     }
@@ -46878,8 +53305,12 @@ process.on("SIGINT", () => {
   clearInterval(externalCompletionTimer);
   clearInterval(expiryTimer);
   for (const client of sseClients) {
+    const res = sseClientResponse(client);
+    if (!res) {
+      continue;
+    }
     try {
-      client.end();
+      res.end();
     } catch {
       // no-op
     }

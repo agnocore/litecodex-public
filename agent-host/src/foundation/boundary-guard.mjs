@@ -2,7 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 
 function normalizeFsPath(input) {
-  return path.resolve(String(input || "")).replace(/\\/g, "/");
+  const resolved = path
+    .resolve(String(input || ""))
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "");
+  if (process.platform === "win32") {
+    return resolved.toLowerCase();
+  }
+  return resolved;
 }
 
 function isWithinWorkspace(targetPath, workspaceRootPath) {

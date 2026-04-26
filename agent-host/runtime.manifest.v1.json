@@ -1,0 +1,47 @@
+{
+  "manifest_version": "v1.agent-host-community-runtime",
+  "build_version": "2026-04-26.agent-host-community-runtime.v1",
+  "source_revision": "litecodex.local.agent-host.src",
+  "generated_at": "2026-04-26T01:35:43.501Z",
+  "host_entrypoint": {
+    "script": "src/server.mjs",
+    "bind": "127.0.0.1:4317",
+    "runtime_profile": "community_kernel"
+  },
+  "files": [
+    {
+      "path": "package.json",
+      "sha256": "25a1c971dfe4b41a65d9d9ec286f3a61713a69530593e3b49ace09bf87b954cd",
+      "bytes": 316
+    },
+    {
+      "path": "src/server.mjs",
+      "sha256": "a334d7c76e6b66655a5f0977725d29634cf6b8224b57044408d3c28d7dcd2030",
+      "bytes": 1900406
+    },
+    {
+      "path": "src/foundation/boundary-guard.mjs",
+      "sha256": "e0852d298fc538b46ba4b8752d923b8a799014e56304919e64484756ad4d6de0",
+      "bytes": 6274
+    },
+    {
+      "path": "src/foundation/attachment-ingest.mjs",
+      "sha256": "edf2ec885374d14d933ff8f4a6204a24861bf94c56d8f770e4da1d5b77c35fce",
+      "bytes": 5696
+    },
+    {
+      "path": "src/foundation/autocontext-assemble.mjs",
+      "sha256": "521c098c134c3f6928308d8d2d6bfbc6ee5483965f512c59f18df90d8e5f5fcc",
+      "bytes": 5237
+    },
+    {
+      "path": "src/foundation/ledger-integrity.mjs",
+      "sha256": "447ba7c35bdb4b67e69cd6a3db796b81ab879be1001bba9efcc88dd9ac117b1d",
+      "bytes": 8940
+    }
+  ],
+  "notes": [
+    "Published from private canonical agent-host runtime artifacts.",
+    "Runtime artifacts only; no private provider source or secrets."
+  ]
+}

@@ -17,6 +17,7 @@ const rootDir = path.resolve(entryDir, "..");
 const binDir = path.join(entryDir, "bin");
 const windowsDir = path.join(entryDir, "windows");
 const serviceDir = path.join(entryDir, "service");
+const agentHostDir = path.join(rootDir, "agent-host");
 const logsDir = path.join(entryDir, "logs");
 const stateDir = path.join(entryDir, "state");
 const stateFile = path.join(stateDir, "entry-state.json");
@@ -125,6 +126,13 @@ function runNodeScript(scriptPath, args = []) {
     cwd: rootDir,
     encoding: "utf8"
   });
+}
+
+function runNpmInstall(cwdPath) {
+  if (process.platform === "win32") {
+    return spawnSync("cmd.exe", ["/d", "/s", "/c", "npm install"], { cwd: cwdPath, encoding: "utf8" });
+  }
+  return spawnSync("npm", ["install"], { cwd: cwdPath, encoding: "utf8" });
 }
 
 function getProcessCommandLine(pid) {
@@ -531,6 +539,14 @@ async function commandInstall() {
   ensureEntryLayout();
   if (!fs.existsSync(ledgerInstallScript)) {
     throw new Error(`Missing ledger installer: ${ledgerInstallScript}`);
+  }
+  if (!fs.existsSync(agentHostDir)) {
+    throw new Error(`Missing agent-host directory: ${agentHostDir}`);
+  }
+
+  const hostNpmInstall = runNpmInstall(agentHostDir);
+  if (hostNpmInstall.status !== 0) {
+    throw new Error(`Agent-host dependency install failed: ${hostNpmInstall.stderr || hostNpmInstall.stdout || "unknown error"}`);
   }
 
   const ledgerInstall = runNodeScript(ledgerInstallScript, ["--strict"]);
