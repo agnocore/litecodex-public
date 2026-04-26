@@ -1,8 +1,8 @@
 {
   "manifest_version": "v1.agent-host-community-runtime",
-  "build_version": "2026-04-26.agent-host-community-runtime.v1",
-  "source_revision": "litecodex.local.agent-host.src",
-  "generated_at": "2026-04-26T02:00:05.813Z",
+  "build_version": "2026-04-26.agent-host-community-runtime.v2",
+  "source_revision": "private-control-plane.agent-host-runtime.community-kernel",
+  "generated_at": "2026-04-26T06:56:15.807Z",
   "host_entrypoint": {
     "script": "src/server.mjs",
     "bind": "127.0.0.1:4317",
@@ -16,28 +16,38 @@
     },
     {
       "path": "src/server.mjs",
-      "sha256": "e06ac537a545a29200f355be550b2d8c1035f7e463dd50253c9bddea953251e9",
-      "bytes": 1900447
+      "sha256": "199b2ed6fd9661619cc1688ef35619fda5dba36949ca65dc9024e7cda17aa911",
+      "bytes": 3379
     },
     {
-      "path": "src/foundation/boundary-guard.mjs",
-      "sha256": "e0852d298fc538b46ba4b8752d923b8a799014e56304919e64484756ad4d6de0",
-      "bytes": 6274
+      "path": "src/kernel/route-registry.mjs",
+      "sha256": "73d72615367aeea98143010cb441bf3cd42389c1c3d8b5b6da4b929628b2fe0b",
+      "bytes": 1747
     },
     {
-      "path": "src/foundation/attachment-ingest.mjs",
-      "sha256": "edf2ec885374d14d933ff8f4a6204a24861bf94c56d8f770e4da1d5b77c35fce",
-      "bytes": 5696
+      "path": "src/kernel/state-store.mjs",
+      "sha256": "c28f9873c710342e7802edb33b2755f7d2f75d9cad88df179340a723151857fe",
+      "bytes": 16694
     },
     {
-      "path": "src/foundation/autocontext-assemble.mjs",
-      "sha256": "521c098c134c3f6928308d8d2d6bfbc6ee5483965f512c59f18df90d8e5f5fcc",
-      "bytes": 5237
+      "path": "src/kernel/contracts.mjs",
+      "sha256": "2947fe71ac302411016cf2e444e29bfa1320e771af50eb5282c8081c5ab3fbe4",
+      "bytes": 1451
     },
     {
-      "path": "src/foundation/ledger-integrity.mjs",
-      "sha256": "447ba7c35bdb4b67e69cd6a3db796b81ab879be1001bba9efcc88dd9ac117b1d",
-      "bytes": 8940
+      "path": "src/kernel/community-routes.mjs",
+      "sha256": "b63e52fd5f466f459478007782cceecdce7c5ef671f32c718617a1987718661c",
+      "bytes": 20082
+    },
+    {
+      "path": "src/kernel/private-provider-loader.mjs",
+      "sha256": "b01c4098e141f7b19eebc0f031adb9721d163498d28059484ca441672c2d7eac",
+      "bytes": 3489
+    },
+    {
+      "path": "src/kernel/http-helpers.mjs",
+      "sha256": "822ad2674f6086f0a2e8abf64eea8ba6bc16086ac2239e38832e08ac06de643b",
+      "bytes": 2014
     }
   ],
   "notes": [

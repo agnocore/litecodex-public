@@ -11,6 +11,6 @@ run-ledger/*.sql text eol=lf
 # Keep published community agent-host runtime artifacts deterministic.
 agent-host/package.json text eol=lf
 agent-host/src/server.mjs text eol=lf
-agent-host/src/foundation/*.mjs text eol=lf
+agent-host/src/kernel/*.mjs text eol=lf
 agent-host/runtime.manifest.v1.json text eol=lf
 scripts/verify-agent-host-runtime.mjs text eol=lf
