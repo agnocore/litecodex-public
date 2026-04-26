@@ -4,7 +4,7 @@
     "bootstrap_file":  "init.sql",
     "bootstrap_sha256":  "be8a60cc974f250f72c8ef599c7788aeafc641a887bf50338d593ca9fbaaaf85",
     "bundle_file":  "community-ledger.bundle.sql",
-    "bundle_sha256":  "04134796aad4875163a0791d6491bd4ed5cb0c86606463c95c56cef2624292c4",
+    "bundle_sha256":  "de4e78c055122fcee4c50d88bc3f0890c8744fd112971129d689ca9607384301",
     "migrations":  [
                        {
                            "file":  "2026-04-foundation-closeout.sql",
